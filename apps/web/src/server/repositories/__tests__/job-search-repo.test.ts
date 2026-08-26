@@ -95,6 +95,13 @@ function result(
         removed: 0,
       },
       { stage: "criteria", input: postings.length, output: postings.length, removed: 0 },
+      {
+        stage: "location-eligibility",
+        input: postings.length,
+        output: postings.length,
+        removed: 0,
+        reasons: { matched: postings.length },
+      },
       { stage: "deduplication", input: postings.length, output: postings.length, removed: 0 },
       { stage: "limit", input: postings.length, output: postings.length, removed: 0 },
     ],

@@ -4,42 +4,73 @@ Provider-based job discovery for OfferOS. This package owns board-level search,
 normalization, cross-source deduplication, and per-run diagnostics. The existing
 web `extract/` ladder still owns deep reads of one known posting.
 
-The first providers use the public, unauthenticated list endpoints documented by
-[Greenhouse](https://developer.greenhouse.io/job-board.html) and
-[Lever](https://github.com/lever/postings-api). They only issue `GET` requests;
-application submission is outside this package.
+The providers use public, unauthenticated read endpoints documented by
+[Greenhouse](https://developer.greenhouse.io/job-board.html),
+[Lever](https://github.com/lever/postings-api),
+[Ashby](https://developers.ashbyhq.com/docs/public-job-posting-api), and
+[freehire](https://freehire.me/docs/api/jobs/agent-jobs-search-get). They only
+issue `GET` requests; application submission is outside this package.
 
 ```ts
-import { createGreenhouseProvider, createLeverProvider, searchJobs } from "@offeros/job-search";
+import {
+  createAshbyProvider,
+  createFreehireProvider,
+  createGreenhouseProvider,
+  createLeverProvider,
+  searchJobs,
+} from "@offeros/job-search";
 
 const result = await searchJobs(
   [
     createGreenhouseProvider([{ token: "clear", company: "CLEAR - Corporate" }]),
     createLeverProvider([{ site: "fundrise", company: "Fundrise" }]),
+    createAshbyProvider([{ name: "Ashby", company: "Ashby" }]),
+    createFreehireProvider(),
   ],
-  { query: "software engineer", maxResults: 100 },
+  {
+    query: "software engineer",
+    locationScope: "remote-us",
+    unknownLocationPolicy: "include",
+    maxResults: 100,
+  },
 );
 ```
 
 `result.providerRuns` records success, partial success, and failure for every
 provider. `result.stages` records the survivor count after normalization,
-criteria matching, deduplication, and the final limit, so jobs never disappear
-without an observable reason.
+text criteria, location eligibility, deduplication, and the final limit. The
+location stage separates `explicit-non-us`, `not-remote`, and unknown-data
+decisions, so jobs never disappear without an observable reason.
+
+`locationScope: "united-states"` excludes jobs explicitly outside the US.
+`locationScope: "remote-us"` also excludes explicitly hybrid/on-site jobs.
+Unknown country or workplace data stays visible by default; set
+`unknownLocationPolicy: "exclude"` for strict filtering. freehire receives the
+equivalent `countries=US` and `work_mode=remote` filters upstream, and OfferOS
+still rechecks every normalized result locally. If freehire reports those
+parameters as ignored, the provider fails closed instead of returning a broad
+result set.
 
 The Web app persists normalized results, source provenance, run diagnostics,
 survivor order, and rolling provider health in its existing local SQLite
-database. `POST /api/v1/jobs/search` executes configured Greenhouse/Lever
-providers, `GET /api/v1/jobs` queries canonical jobs without touching the
-network, and `GET /api/v1/jobs/search` returns recent runs and provider health.
+database. `POST /api/v1/jobs/search` executes configured Greenhouse, Lever,
+Ashby, and optional freehire providers. `GET /api/v1/jobs` queries canonical
+jobs without touching the network, and `GET /api/v1/jobs/search` returns recent
+runs and provider health.
 
-Current boundary: provider configuration is supplied per search request. Saved
-searches, scheduled scans, US/Remote hard filters, Ashby/freehire, and the Web UI
-remain later Phase 2 slices.
+Current boundary: provider configuration is supplied per search request. The
+hosted freehire endpoint is fixed in the Web route to avoid arbitrary remote URL
+fetches; library callers may explicitly configure an HTTPS self-hosted instance.
+Saved searches, scheduled scans, and the Web search UI remain later Phase 2
+slices.
 
 To check current public payloads without writing anywhere:
 
 ```bash
 npm run probe:live -w @offeros/job-search -- \
+  --remote-us \
   "greenhouse:clear:CLEAR - Corporate" \
-  "lever:fundrise:Fundrise"
+  "lever:fundrise:Fundrise" \
+  "ashby:Ashby:Ashby" \
+  freehire
 ```

@@ -1,5 +1,5 @@
 import { deduplicatePostings } from "./dedupe";
-import { matchesQuery } from "./normalize";
+import { locationEligibilityReason, matchesQuery } from "./normalize";
 import {
   jobPostingSchema,
   jobSearchCriteriaSchema,
@@ -78,7 +78,13 @@ export async function searchJobs(
       return parsed.success ? [parsed.data] : [];
     });
   const criteriaMatched = normalized.filter((posting) => matchesQuery(posting, criteria.query));
-  const deduplicated = deduplicatePostings(criteriaMatched).postings;
+  const locationReasons: Record<string, number> = {};
+  const locationMatched = criteriaMatched.filter((posting) => {
+    const reason = locationEligibilityReason(posting, criteria);
+    locationReasons[reason] = (locationReasons[reason] ?? 0) + 1;
+    return reason === "matched" || reason === "unknown-included";
+  });
+  const deduplicated = deduplicatePostings(locationMatched).postings;
   const limited = criteria.maxResults ? deduplicated.slice(0, criteria.maxResults) : deduplicated;
   const stages: SearchStageCount[] = [
     {
@@ -94,10 +100,17 @@ export async function searchJobs(
       removed: normalized.length - criteriaMatched.length,
     },
     {
-      stage: "deduplication",
+      stage: "location-eligibility",
       input: criteriaMatched.length,
+      output: locationMatched.length,
+      removed: criteriaMatched.length - locationMatched.length,
+      reasons: locationReasons,
+    },
+    {
+      stage: "deduplication",
+      input: locationMatched.length,
       output: deduplicated.length,
-      removed: criteriaMatched.length - deduplicated.length,
+      removed: locationMatched.length - deduplicated.length,
     },
     {
       stage: "limit",

@@ -116,6 +116,13 @@ describe("search orchestration", () => {
     expect(result.stages).toEqual([
       { stage: "provider-normalization", input: 3, output: 3, removed: 0 },
       { stage: "criteria", input: 3, output: 3, removed: 0 },
+      {
+        stage: "location-eligibility",
+        input: 3,
+        output: 3,
+        removed: 0,
+        reasons: { matched: 3 },
+      },
       { stage: "deduplication", input: 3, output: 2, removed: 1 },
       { stage: "limit", input: 2, output: 2, removed: 0 },
     ]);
@@ -141,5 +148,52 @@ describe("search orchestration", () => {
       removed: 1,
     });
     expect(result.stages.at(-1)).toEqual({ stage: "limit", input: 2, output: 1, removed: 1 });
+  });
+
+  it("hard-filters explicit non-US remote and non-remote roles with reason counts", async () => {
+    const result = await searchJobs(
+      [
+        provider("mixed", [
+          posting("remote-us", { countryCode: "US", workplace: "remote" }),
+          posting("remote-ca", {
+            location: "Remote, Canada",
+            countryCode: "CA",
+            workplace: "remote",
+          }),
+          posting("hybrid-us", { countryCode: "US", workplace: "hybrid" }),
+          posting("unknown", { location: undefined, countryCode: undefined, workplace: "unknown" }),
+        ]),
+      ],
+      { locationScope: "remote-us" },
+    );
+
+    expect(result.postings.map((item) => item.id)).toEqual(["remote-us", "unknown"]);
+    expect(result.stages.find((stage) => stage.stage === "location-eligibility")).toEqual({
+      stage: "location-eligibility",
+      input: 4,
+      output: 2,
+      removed: 2,
+      reasons: {
+        matched: 1,
+        "explicit-non-us": 1,
+        "not-remote": 1,
+        "unknown-included": 1,
+      },
+    });
+  });
+
+  it("can explicitly exclude unknown country or workplace eligibility", async () => {
+    const result = await searchJobs(
+      [provider("unknown", [posting("unknown", { location: undefined, workplace: "unknown" })])],
+      {
+        locationScope: "remote-us",
+        unknownLocationPolicy: "exclude",
+      },
+    );
+
+    expect(result.postings).toEqual([]);
+    expect(result.stages.find((stage) => stage.stage === "location-eligibility")?.reasons).toEqual({
+      "unknown-excluded": 1,
+    });
   });
 });

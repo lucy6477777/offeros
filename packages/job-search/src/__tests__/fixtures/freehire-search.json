@@ -1,0 +1,30 @@
+{
+  "data": [
+    {
+      "public_slug": "platform-engineer-acme-abc123",
+      "source": "greenhouse",
+      "external_id": "123",
+      "url": "https://job-boards.greenhouse.io/acme/jobs/123?utm_source=freehire.me",
+      "title": "Platform Engineer",
+      "company": "Acme",
+      "company_slug": "acme",
+      "location": "United States",
+      "countries": ["us"],
+      "regions": ["north_america"],
+      "work_mode": "remote",
+      "description": "Build reliable TypeScript platform services.",
+      "posted_at": "2026-08-05T14:03:22Z",
+      "updated_at": "2026-08-05T16:52:49Z",
+      "closed_at": null
+    },
+    {
+      "public_slug": "missing-required-fields",
+      "title": "Broken row"
+    }
+  ],
+  "meta": {
+    "limit": 100,
+    "offset": 0,
+    "total": 2
+  }
+}

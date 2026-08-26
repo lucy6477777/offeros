@@ -7,9 +7,12 @@ export const PROVIDER_RUN_STATUSES = ["success", "partial", "failed"] as const;
 export const SEARCH_STAGE_NAMES = [
   "provider-normalization",
   "criteria",
+  "location-eligibility",
   "deduplication",
   "limit",
 ] as const;
+export const JOB_LOCATION_SCOPES = ["any", "united-states", "remote-us"] as const;
+export const UNKNOWN_LOCATION_POLICIES = ["include", "exclude"] as const;
 
 export const jobSourceRecordSchema = z.object({
   provider: z.string().min(1),
@@ -49,12 +52,18 @@ export const jobPostingSchema = z.object({
 export const jobSearchCriteriaSchema = z.object({
   /** Local full-text match over title, company, location, and description. */
   query: z.string().trim().min(1).optional(),
+  /** Local eligibility guard. Providers may also receive equivalent upstream filters. */
+  locationScope: z.enum(JOB_LOCATION_SCOPES).optional(),
+  /** Missing country/workplace data is explicit and retained by default, never guessed. */
+  unknownLocationPolicy: z.enum(UNKNOWN_LOCATION_POLICIES).optional(),
   maxResults: z.number().int().min(1).max(5_000).optional(),
 });
 
 export type JobSourceKind = (typeof JOB_SOURCE_KINDS)[number];
 export type JobWorkplaceType = (typeof JOB_WORKPLACE_TYPES)[number];
 export type JobLiveness = (typeof JOB_LIVENESS)[number];
+export type JobLocationScope = (typeof JOB_LOCATION_SCOPES)[number];
+export type UnknownLocationPolicy = (typeof UNKNOWN_LOCATION_POLICIES)[number];
 export type JobSourceRecord = z.infer<typeof jobSourceRecordSchema>;
 export type JobPosting = z.infer<typeof jobPostingSchema>;
 export type JobSearchCriteria = z.infer<typeof jobSearchCriteriaSchema>;
@@ -106,6 +115,7 @@ export const searchStageCountSchema = z.object({
   input: z.number().int().nonnegative(),
   output: z.number().int().nonnegative(),
   removed: z.number().int().nonnegative(),
+  reasons: z.record(z.string(), z.number().int().nonnegative()).optional(),
 });
 
 export const jobSearchResultSchema = z.object({

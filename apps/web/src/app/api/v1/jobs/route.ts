@@ -12,8 +12,12 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const query = params.get("query")?.trim();
     const rawMaxResults = params.get("maxResults");
+    const locationScope = params.get("locationScope")?.trim();
+    const unknownLocationPolicy = params.get("unknownLocationPolicy")?.trim();
     const criteria = jobSearchCriteriaSchema.parse({
       ...(query ? { query } : {}),
+      ...(locationScope ? { locationScope } : {}),
+      ...(unknownLocationPolicy ? { unknownLocationPolicy } : {}),
       ...(rawMaxResults === null ? {} : { maxResults: Number(rawMaxResults) }),
     });
     return ok(listStoredJobs(getDb(), criteria));

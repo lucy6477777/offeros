@@ -5,6 +5,7 @@ import {
   jobPostingSchema,
   jobSearchCriteriaSchema,
   jobSearchResultSchema,
+  matchesLocationCriteria,
   matchesQuery,
   normalizePostingUrl,
   providerRunSchema,
@@ -290,7 +291,11 @@ export function listStoredJobs(db: Db, criteriaInput: unknown = {}): StoredJobPo
     .orderBy(desc(jobPostings.lastSeenAt))
     .all()
     .map(toStoredJob)
-    .filter((stored) => matchesQuery(stored.posting, criteria.query));
+    .filter(
+      (stored) =>
+        matchesQuery(stored.posting, criteria.query) &&
+        matchesLocationCriteria(stored.posting, criteria),
+    );
   return criteria.maxResults ? matched.slice(0, criteria.maxResults) : matched;
 }
 

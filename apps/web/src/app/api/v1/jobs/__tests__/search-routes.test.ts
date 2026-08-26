@@ -38,6 +38,44 @@ vi.stubGlobal("fetch", async (input: string | URL | Request) => {
       },
     ]);
   }
+  if (url.includes("api.ashbyhq.com")) {
+    return Response.json({
+      apiVersion: "1",
+      jobs: [
+        {
+          id: "ashby-303",
+          title: "Security Engineer",
+          location: "Remote",
+          address: { postalAddress: { addressCountry: "United States" } },
+          workplaceType: "Remote",
+          isListed: true,
+          descriptionPlain: "Secure cloud infrastructure.",
+          publishedAt: "2026-08-24T08:00:00Z",
+          jobUrl: "https://jobs.ashbyhq.com/gamma/ashby-303",
+          applyUrl: "https://jobs.ashbyhq.com/gamma/ashby-303/application",
+        },
+      ],
+    });
+  }
+  if (url.includes("freehire.me/api/v1/agent/jobs/search")) {
+    return Response.json({
+      data: [
+        {
+          public_slug: "data-engineer-delta-404",
+          source: "workable",
+          url: "https://jobs.example.com/delta/404?utm_source=freehire.me",
+          title: "Data Engineer",
+          company: "Delta",
+          location: "United States",
+          countries: ["us"],
+          work_mode: "remote",
+          description: "Build data pipelines.",
+          posted_at: "2026-08-23T08:00:00Z",
+        },
+      ],
+      meta: { limit: 100, offset: 0, total: 1 },
+    });
+  }
   return new Response("not found", { status: 404 });
 });
 
@@ -62,6 +100,8 @@ function post(body: unknown): Request {
 const SOURCES = {
   greenhouse: [{ token: "acme", company: "Acme" }],
   lever: [{ site: "beta", company: "Beta" }],
+  ashby: [{ name: "gamma", company: "Gamma" }],
+  freehire: true,
 };
 
 describe("job search routes", () => {
@@ -70,11 +110,11 @@ describe("job search routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.result.run).toMatchObject({ status: "success", resultCount: 2 });
-    expect(body.result.postings).toHaveLength(2);
+    expect(body.result.run).toMatchObject({ status: "success", resultCount: 4 });
+    expect(body.result.postings).toHaveLength(4);
     expect(
       body.result.providerRuns.map((run: { provider: string }) => run.provider).sort(),
-    ).toEqual(["greenhouse", "lever"]);
+    ).toEqual(["ashby", "freehire", "greenhouse", "lever"]);
 
     const jobs = await (
       await jobsRoute.GET(
@@ -84,11 +124,25 @@ describe("job search routes", () => {
     expect(jobs.result).toHaveLength(1);
     expect(jobs.result[0].posting).toMatchObject({ company: "Acme", workplace: "remote" });
 
+    const strictRemoteUs = await (
+      await jobsRoute.GET(
+        new Request(
+          "http://localhost/api/v1/jobs?locationScope=remote-us&unknownLocationPolicy=exclude",
+        ),
+      )
+    ).json();
+    expect(strictRemoteUs.result).toHaveLength(3);
+    expect(
+      strictRemoteUs.result.every(
+        (stored: { posting: { workplace: string } }) => stored.posting.workplace === "remote",
+      ),
+    ).toBe(true);
+
     const history = await (
       await searchRoute.GET(new Request("http://localhost/api/v1/jobs/search?limit=10"))
     ).json();
     expect(history.result.runs).toHaveLength(1);
-    expect(history.result.sourceHealth).toHaveLength(2);
+    expect(history.result.sourceHealth).toHaveLength(4);
   });
 
   it("persists a partial run when one provider is temporarily unavailable", async () => {
@@ -98,7 +152,7 @@ describe("job search routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.result.run).toMatchObject({ status: "partial", resultCount: 1 });
+    expect(body.result.run).toMatchObject({ status: "partial", resultCount: 3 });
     expect(body.result.providerRuns).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: "greenhouse", status: "failed" }),

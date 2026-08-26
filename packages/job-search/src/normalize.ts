@@ -1,4 +1,4 @@
-import type { JobPosting, JobWorkplaceType } from "./types";
+import type { JobPosting, JobSearchCriteria, JobWorkplaceType } from "./types";
 
 const TRACKING_PARAMS = new Set([
   "gh_src",
@@ -85,4 +85,216 @@ export function matchesQuery(posting: JobPosting, query: string | undefined): bo
   );
   const terms = normalizeSearchText(query).split(" ").filter(Boolean);
   return terms.every((term) => haystack.includes(term));
+}
+
+const US_STATE_NAMES = new Set(
+  [
+    "alabama",
+    "alaska",
+    "arizona",
+    "arkansas",
+    "california",
+    "colorado",
+    "connecticut",
+    "delaware",
+    "district of columbia",
+    "florida",
+    "hawaii",
+    "idaho",
+    "illinois",
+    "indiana",
+    "iowa",
+    "kansas",
+    "kentucky",
+    "louisiana",
+    "maine",
+    "maryland",
+    "massachusetts",
+    "michigan",
+    "minnesota",
+    "mississippi",
+    "missouri",
+    "montana",
+    "nebraska",
+    "nevada",
+    "new hampshire",
+    "new jersey",
+    "new mexico",
+    "new york",
+    "north carolina",
+    "north dakota",
+    "ohio",
+    "oklahoma",
+    "oregon",
+    "pennsylvania",
+    "rhode island",
+    "south carolina",
+    "south dakota",
+    "tennessee",
+    "texas",
+    "utah",
+    "vermont",
+    "virginia",
+    "washington",
+    "west virginia",
+    "wisconsin",
+    "wyoming",
+  ].map(normalizeSearchText),
+);
+
+const US_STATE_CODES = new Set([
+  "AL",
+  "AK",
+  "AZ",
+  "AR",
+  "CA",
+  "CO",
+  "CT",
+  "DE",
+  "DC",
+  "FL",
+  "GA",
+  "HI",
+  "ID",
+  "IL",
+  "IN",
+  "IA",
+  "KS",
+  "KY",
+  "LA",
+  "ME",
+  "MD",
+  "MA",
+  "MI",
+  "MN",
+  "MS",
+  "MO",
+  "MT",
+  "NE",
+  "NV",
+  "NH",
+  "NJ",
+  "NM",
+  "NY",
+  "NC",
+  "ND",
+  "OH",
+  "OK",
+  "OR",
+  "PA",
+  "RI",
+  "SC",
+  "SD",
+  "TN",
+  "TX",
+  "UT",
+  "VT",
+  "VA",
+  "WA",
+  "WV",
+  "WI",
+  "WY",
+]);
+
+// Conservative markers only: ambiguous regions such as "Americas" or "Worldwide"
+// remain unknown instead of being confidently accepted or rejected.
+const NON_US_LOCATION_MARKERS = [
+  "africa",
+  "apac",
+  "argentina",
+  "australia",
+  "austria",
+  "brazil",
+  "canada",
+  "chile",
+  "china",
+  "colombia",
+  "denmark",
+  "emea",
+  "estonia",
+  "europe",
+  "european union",
+  "france",
+  "germany",
+  "hungary",
+  "india",
+  "indonesia",
+  "ireland",
+  "israel",
+  "italy",
+  "japan",
+  "malaysia",
+  "mexico",
+  "netherlands",
+  "new zealand",
+  "norway",
+  "philippines",
+  "poland",
+  "portugal",
+  "romania",
+  "singapore",
+  "south africa",
+  "spain",
+  "sweden",
+  "switzerland",
+  "thailand",
+  "uae",
+  "united arab emirates",
+  "united kingdom",
+  "vietnam",
+] as const;
+
+type CountryEvidence = "us" | "non-us" | "unknown";
+export type LocationEligibilityReason =
+  "matched" | "explicit-non-us" | "not-remote" | "unknown-included" | "unknown-excluded";
+
+function containsPhrase(text: string, phrase: string): boolean {
+  return ` ${text} `.includes(` ${phrase} `);
+}
+
+function countryEvidence(posting: JobPosting): CountryEvidence {
+  if (posting.countryCode) return posting.countryCode.toUpperCase() === "US" ? "us" : "non-us";
+  if (!posting.location) return "unknown";
+  const normalized = normalizeSearchText(posting.location);
+  if (
+    ["united states", "united states of america", "usa", "u s a", "u s"].some((value) =>
+      containsPhrase(normalized, value),
+    ) ||
+    [...US_STATE_NAMES].some((value) => containsPhrase(normalized, value))
+  ) {
+    return "us";
+  }
+  const rawTokens = posting.location.split(/[^A-Za-z]+/).filter(Boolean);
+  if (rawTokens.some((token) => token === token.toUpperCase() && US_STATE_CODES.has(token))) {
+    return "us";
+  }
+  if (NON_US_LOCATION_MARKERS.some((value) => containsPhrase(normalized, value))) return "non-us";
+  return "unknown";
+}
+
+/**
+ * Evaluate one posting against the location/workplace guard without inventing
+ * missing facts. Unknown eligibility is included unless the caller opts into
+ * strict exclusion.
+ */
+export function locationEligibilityReason(
+  posting: JobPosting,
+  criteria: JobSearchCriteria,
+): LocationEligibilityReason {
+  const scope = criteria.locationScope ?? "any";
+  if (scope === "any") return "matched";
+
+  const country = countryEvidence(posting);
+  if (country === "non-us") return "explicit-non-us";
+  if (scope === "remote-us" && posting.workplace !== "remote") {
+    if (posting.workplace !== "unknown") return "not-remote";
+    return criteria.unknownLocationPolicy === "exclude" ? "unknown-excluded" : "unknown-included";
+  }
+  if (country === "us") return "matched";
+  return criteria.unknownLocationPolicy === "exclude" ? "unknown-excluded" : "unknown-included";
+}
+
+export function matchesLocationCriteria(posting: JobPosting, criteria: JobSearchCriteria): boolean {
+  const reason = locationEligibilityReason(posting, criteria);
+  return reason === "matched" || reason === "unknown-included";
 }

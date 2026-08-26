@@ -2,5 +2,7 @@ export * from "./types";
 export * from "./normalize";
 export * from "./dedupe";
 export * from "./search";
+export * from "./providers/ashby";
+export * from "./providers/freehire";
 export * from "./providers/greenhouse";
 export * from "./providers/lever";

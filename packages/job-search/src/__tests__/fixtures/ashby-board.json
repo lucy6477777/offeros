@@ -1,0 +1,38 @@
+{
+  "apiVersion": "1",
+  "jobs": [
+    {
+      "id": "7458d4e9-da2e-47bd-98cb-adfda43d42b2",
+      "title": "Staff Platform Engineer",
+      "department": "Engineering",
+      "team": "Infrastructure",
+      "employmentType": "FullTime",
+      "location": "Remote",
+      "publishedAt": "2026-08-20T14:29:08.532+00:00",
+      "isListed": true,
+      "isRemote": true,
+      "workplaceType": "Remote",
+      "descriptionHtml": "<p>Build the <strong>TypeScript</strong> platform.</p>",
+      "descriptionPlain": "Build the TypeScript platform.",
+      "address": {
+        "postalAddress": {
+          "addressCountry": "United States"
+        }
+      },
+      "jobUrl": "https://jobs.ashbyhq.com/Acme/7458d4e9-da2e-47bd-98cb-adfda43d42b2",
+      "applyUrl": "https://jobs.ashbyhq.com/Acme/7458d4e9-da2e-47bd-98cb-adfda43d42b2/application",
+      "shouldDisplayCompensationOnJobPostings": true,
+      "compensation": {
+        "compensationTierSummary": "$180K – $220K • Offers Equity",
+        "scrapeableCompensationSalarySummary": "$180K - $220K"
+      }
+    },
+    {
+      "id": "unlisted-role",
+      "title": "Unlisted Role",
+      "isListed": false,
+      "jobUrl": "https://jobs.ashbyhq.com/Acme/unlisted-role",
+      "applyUrl": "https://jobs.ashbyhq.com/Acme/unlisted-role/application"
+    }
+  ]
+}

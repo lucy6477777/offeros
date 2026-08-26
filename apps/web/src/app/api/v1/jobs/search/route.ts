@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+  createAshbyProvider,
+  createFreehireProvider,
   createGreenhouseProvider,
   createLeverProvider,
   jobSearchCriteriaSchema,
@@ -31,6 +33,13 @@ const leverSiteSchema = z
   })
   .strict();
 
+const ashbyBoardSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    company: z.string().trim().min(1).max(300),
+  })
+  .strict();
+
 const searchRequestSchema = z
   .object({
     criteria: jobSearchCriteriaSchema.default({}),
@@ -38,6 +47,8 @@ const searchRequestSchema = z
       .object({
         greenhouse: z.array(greenhouseBoardSchema).max(50).default([]),
         lever: z.array(leverSiteSchema).max(50).default([]),
+        ashby: z.array(ashbyBoardSchema).max(50).default([]),
+        freehire: z.boolean().default(false),
       })
       .strict(),
   })
@@ -69,6 +80,10 @@ export async function POST(request: Request) {
     if (input.sources.lever.length > 0) {
       providers.push(createLeverProvider(input.sources.lever));
     }
+    if (input.sources.ashby.length > 0) {
+      providers.push(createAshbyProvider(input.sources.ashby));
+    }
+    if (input.sources.freehire) providers.push(createFreehireProvider());
     if (providers.length === 0) return badRequest("at least one job source is required");
 
     const result = await searchJobs(providers, input.criteria);
