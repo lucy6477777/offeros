@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/", label: "Applications" },
+  { href: "/jobs", label: "Jobs" },
   { href: "/agent", label: "Agent" },
   { href: "/profile", label: "Profile" },
   { href: "/documents", label: "Documents" },
@@ -28,11 +29,11 @@ export function AppNav() {
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
-      <nav className="mx-auto flex h-16 w-full max-w-[1120px] items-center gap-8 px-6">
-        <Link href="/" className="text-title font-semibold text-foreground">
+      <nav className="mx-auto flex h-16 w-full max-w-[1120px] items-center gap-4 overflow-x-auto px-4 sm:gap-8 sm:px-6">
+        <Link href="/" className="shrink-0 text-title font-semibold text-foreground">
           OfferOS
         </Link>
-        <div className="flex items-center gap-6">
+        <div className="flex shrink-0 items-center gap-4 sm:gap-6">
           {LINKS.map((link) => (
             <Link
               key={link.href}

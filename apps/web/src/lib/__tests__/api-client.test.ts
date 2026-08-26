@@ -92,6 +92,47 @@ describe("api client", () => {
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body)).toEqual({ provider: "openai", model: "gpt-4o", key: "k" });
   });
+
+  it("jobs.list serializes local catalogue filters", async () => {
+    const fetchMock = stubFetch({
+      success: true,
+      errorCode: 10000,
+      errorMsg: null,
+      result: [],
+    });
+
+    await api.jobs.list({
+      query: "platform engineer",
+      locationScope: "remote-us",
+      unknownLocationPolicy: "exclude",
+      maxResults: 25,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(
+      "/api/v1/jobs?query=platform+engineer&locationScope=remote-us&unknownLocationPolicy=exclude&maxResults=25",
+    );
+    expect(init.method).toBeUndefined();
+  });
+
+  it("jobs.searchPublic uses only the broad public source", async () => {
+    const fetchMock = stubFetch({
+      success: true,
+      errorCode: 10000,
+      errorMsg: null,
+      result: { run: { id: "run-1" }, postings: [], providerRuns: [], stages: [] },
+    });
+
+    await api.jobs.searchPublic({ query: "ML engineer", locationScope: "remote-us" });
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("/api/v1/jobs/search");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({
+      criteria: { query: "ML engineer", locationScope: "remote-us" },
+      sources: { freehire: true },
+    });
+  });
 });
 
 describe("isLlmNotConfigured", () => {

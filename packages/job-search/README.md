@@ -78,11 +78,18 @@ Ashby, and optional freehire providers. `GET /api/v1/jobs` queries canonical
 jobs without touching the network, and `GET /api/v1/jobs/search` returns recent
 runs and provider health.
 
+The Web `/jobs` page renders the local catalogue with source provenance,
+posting and last-check timestamps, liveness, and the original Apply Link.
+Keywords and US/Remote controls filter local data immediately. A separate,
+explicit “Search public jobs” action runs freehire and then re-reads the
+persisted catalogue and source health, so the UI never presents an unpersisted
+network response as local state.
+
 Current boundary: provider configuration is supplied per search request. The
 hosted freehire endpoint is fixed in the Web route to avoid arbitrary remote URL
 fetches; library callers may explicitly configure an HTTPS self-hosted instance.
-Saved searches, scheduled scans, and the Web search-results UI remain later
-Phase 2 slices.
+Saved searches, scheduled scans, and a user-facing ATS watchlist/configuration
+flow remain later Phase 2 slices.
 
 To check current public payloads without writing anywhere:
 

@@ -17,6 +17,14 @@ import type {
   Template,
 } from "@offeros/core";
 import type { ParsedResume } from "@offeros/llm";
+import type {
+  JobPosting,
+  JobSearchCriteria,
+  ProviderIssue,
+  ProviderRun,
+  ProviderRunStatus,
+  SearchStageCount,
+} from "@offeros/job-search";
 import type { StyleMemoryKind, StyleMemorySetting } from "@/server/repositories/style-memory-repo";
 import type { AgentStep } from "@/server/agent/loop";
 import type { FillStats } from "@offeros/autofill";
@@ -46,6 +54,44 @@ const NO_API_KEY_CODE = 42000;
  */
 export type ClientSettings = Omit<Settings, "llm"> & {
   llm: Omit<Settings["llm"], "apiKeys">;
+};
+
+export type JobCatalogueEntry = {
+  posting: JobPosting;
+  firstSeenAt: number;
+  lastSeenAt: number;
+};
+
+export type JobSearchRunSummary = {
+  id: string;
+  criteria: JobSearchCriteria;
+  providerRuns: ProviderRun[];
+  stages: SearchStageCount[];
+  status: ProviderRunStatus;
+  resultCount: number;
+  startedAt: number;
+  finishedAt: number;
+};
+
+export type JobSourceHealthSummary = {
+  provider: string;
+  status: ProviderRunStatus;
+  received: number;
+  accepted: number;
+  rejected: number;
+  durationMs: number;
+  issues: ProviderIssue[];
+  lastSuccessAt?: number;
+  lastFailureAt?: number;
+  consecutiveFailures: number;
+  updatedAt: number;
+};
+
+export type PublicJobSearchResult = {
+  run: JobSearchRunSummary;
+  postings: JobCatalogueEntry[];
+  providerRuns: ProviderRun[];
+  stages: SearchStageCount[];
 };
 
 /** True only for the "no provider key configured" envelope, never for test-llm's plain 400s. */
@@ -205,6 +251,30 @@ export const api = {
   fit: {
     recompute: (applicationId: string) =>
       request<FitAnalysis>(`/applications/${applicationId}/fit`, json("POST", {})),
+  },
+  jobs: {
+    list: (criteria: JobSearchCriteria = {}) => {
+      const params = new URLSearchParams();
+      if (criteria.query) params.set("query", criteria.query);
+      if (criteria.locationScope) params.set("locationScope", criteria.locationScope);
+      if (criteria.unknownLocationPolicy) {
+        params.set("unknownLocationPolicy", criteria.unknownLocationPolicy);
+      }
+      if (criteria.maxResults) params.set("maxResults", String(criteria.maxResults));
+      const query = params.toString();
+      return request<JobCatalogueEntry[]>(`/jobs${query ? `?${query}` : ""}`);
+    },
+    history: (limit = 20) =>
+      request<{ runs: JobSearchRunSummary[]; sourceHealth: JobSourceHealthSummary[] }>(
+        `/jobs/search?limit=${limit}`,
+      ),
+    /** Broad public discovery stays a deliberate user action. Company ATS
+     * board configuration belongs to Saved Search, not this everyday form. */
+    searchPublic: (criteria: JobSearchCriteria) =>
+      request<PublicJobSearchResult>(
+        "/jobs/search",
+        json("POST", { criteria, sources: { freehire: true } }),
+      ),
   },
   settings: {
     get: () => request<ClientSettings>("/settings"),
