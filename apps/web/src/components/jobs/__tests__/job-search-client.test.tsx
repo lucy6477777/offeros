@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { SavedJobSearch } from "@offeros/job-search";
 import type {
   JobCatalogueEntry,
@@ -297,6 +297,187 @@ describe("JobSearchClient", () => {
     expect(screen.getByText("Staff Platform Engineer")).toBeTruthy();
     expect(screen.getByText("Excluded keyword matched: contract.")).toBeTruthy();
     expect(screen.getByText(/exceeds the senior ceiling/)).toBeTruthy();
+  });
+
+  it("shows conservative salary and experience facts, decisions, and decisive JD evidence", () => {
+    const savedSearch: SavedJobSearch = {
+      id: "saved-compensation",
+      name: "Compensation fit",
+      criteria: {
+        query: "platform engineer",
+        locationScope: "remote-us",
+        unknownLocationPolicy: "include",
+        maxResults: 100,
+      },
+      sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
+      match: {
+        skillSource: "manual",
+        prioritySkills: ["TypeScript"],
+        excludedKeywords: [],
+        excludedCompanies: [],
+        minimumAnnualSalaryUsd: 120_000,
+        maximumRequiredExperienceYears: 4,
+        eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "not-needed" },
+      },
+      createdAt: 10,
+      updatedAt: 10,
+    };
+    renderSearch(
+      [
+        entry("below-salary", {
+          title: "Below Salary Platform Engineer",
+          liveness: "open",
+          salary: "USD 100,000–119,000 per year",
+          description: "Build platform services with TypeScript. 3–5 years of experience required.",
+        }),
+        entry("crossing-salary", {
+          title: "Crossing Salary Platform Engineer",
+          liveness: "open",
+          salary: "USD 100,000–140,000 per year",
+          description: "Build platform services with TypeScript. 3–5 years of experience required.",
+        }),
+        entry("hourly-salary", {
+          title: "Hourly Salary Platform Engineer",
+          liveness: "open",
+          salary: "USD 80 per hour",
+          description: "Build platform services with TypeScript. 3–5 years of experience required.",
+        }),
+        entry("missing-salary", {
+          title: "Missing Salary Platform Engineer",
+          liveness: "open",
+          description: "Build platform services with TypeScript. 3–5 years of experience required.",
+        }),
+        entry("experience-blocker", {
+          title: "Experience Heavy Platform Engineer",
+          liveness: "open",
+          salary: "USD 130,000 per year",
+          description:
+            "Build platform services with TypeScript. 5+ years of professional experience required.",
+        }),
+        entry("experience-range", {
+          title: "Range Experience Platform Engineer",
+          liveness: "open",
+          salary: "USD 130,000 per year",
+          description:
+            "Build platform services with TypeScript. 3–5 years of professional experience required.",
+        }),
+        entry("experience-up-to", {
+          title: "Up To Experience Platform Engineer",
+          liveness: "open",
+          salary: "USD 130,000 per year",
+          description:
+            "Build platform services with TypeScript. Up to 4 years of professional experience required.",
+        }),
+        entry("experience-tech", {
+          title: "React Experience Platform Engineer",
+          liveness: "open",
+          salary: "USD 130,000 per year",
+          description:
+            "Build platform services with TypeScript. 5+ years of React experience required.",
+        }),
+      ],
+      [savedSearch],
+    );
+
+    expect(screen.queryByText("Below Salary Platform Engineer")).toBeNull();
+    expect(screen.queryByText("Experience Heavy Platform Engineer")).toBeNull();
+
+    const crossing = screen.getByText("Crossing Salary Platform Engineer").closest("article")!;
+    expect(within(crossing).getByText("$100k–$140k annual USD")).toBeTruthy();
+    expect(within(crossing).getByLabelText("Salary decision: Needs review")).toBeTruthy();
+    expect(within(crossing).getByLabelText("Salary evidence").textContent).toContain(
+      "USD 100,000–140,000 per year",
+    );
+
+    const hourly = screen.getByText("Hourly Salary Platform Engineer").closest("article")!;
+    expect(within(hourly).getByText("Not a supported annual USD cash/base amount")).toBeTruthy();
+    expect(within(hourly).getByLabelText("Salary decision: Needs review")).toBeTruthy();
+
+    const missing = screen.getByText("Missing Salary Platform Engineer").closest("article")!;
+    expect(within(missing).getAllByText("Not mentioned")).toHaveLength(1);
+    expect(within(missing).getByLabelText("Salary decision: Needs review")).toBeTruthy();
+
+    const range = screen.getByText("Range Experience Platform Engineer").closest("article")!;
+    expect(within(range).getByText("3–5 years explicitly required")).toBeTruthy();
+    expect(within(range).getByLabelText("Experience decision: Rule satisfied")).toBeTruthy();
+    expect(within(range).getByLabelText("Experience evidence").textContent).toContain(
+      "3–5 years of professional experience required",
+    );
+
+    for (const title of [
+      "Up To Experience Platform Engineer",
+      "React Experience Platform Engineer",
+    ]) {
+      const reviewCard = screen.getByText(title).closest("article")!;
+      expect(within(reviewCard).getByLabelText("Experience decision: Needs review")).toBeTruthy();
+      expect(
+        within(reviewCard).getByText("Ambiguous or non-comparable experience requirement"),
+      ).toBeTruthy();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 2 excluded" }));
+
+    const below = screen.getByText("Below Salary Platform Engineer").closest("article")!;
+    expect(within(below).getByLabelText("Salary decision: Rule blocker")).toBeTruthy();
+    expect(within(below).getByText(/Annual salary maximum.*below your minimum/)).toBeTruthy();
+    expect(
+      within(below)
+        .getByText(/Skills found:/)
+        .closest("p")?.textContent,
+    ).toContain("TypeScript");
+
+    const heavy = screen.getByText("Experience Heavy Platform Engineer").closest("article")!;
+    expect(within(heavy).getByText("5+ years explicitly required")).toBeTruthy();
+    expect(within(heavy).getByLabelText("Experience decision: Rule blocker")).toBeTruthy();
+    expect(
+      within(heavy).getByText(/Required experience minimum.*exceeds your maximum/),
+    ).toBeTruthy();
+  });
+
+  it("keeps satisfied fact badges independent from unrelated exclusion blockers", () => {
+    const savedSearch: SavedJobSearch = {
+      id: "saved-independent-decisions",
+      name: "Independent decisions",
+      criteria: {
+        query: "platform engineer",
+        locationScope: "remote-us",
+        unknownLocationPolicy: "include",
+      },
+      sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
+      match: {
+        skillSource: "manual",
+        prioritySkills: ["TypeScript"],
+        excludedKeywords: ["salary", "required experience"],
+        excludedCompanies: [],
+        minimumAnnualSalaryUsd: 120_000,
+        maximumRequiredExperienceYears: 4,
+        eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "not-needed" },
+      },
+      createdAt: 10,
+      updatedAt: 10,
+    };
+    renderSearch(
+      [
+        entry("excluded-but-satisfied", {
+          title: "Platform Engineer",
+          company: "Salary Labs",
+          liveness: "open",
+          salary: "USD 130,000 per year",
+          description:
+            "Build services with TypeScript. Required experience: 3–5 years of professional experience.",
+        }),
+      ],
+      [savedSearch],
+    );
+
+    expect(screen.queryByText("Salary Labs")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 excluded" }));
+
+    const card = screen.getByText("Salary Labs").closest("article")!;
+    expect(within(card).getByLabelText("Salary decision: Rule satisfied")).toBeTruthy();
+    expect(within(card).getByLabelText("Experience decision: Rule satisfied")).toBeTruthy();
+    expect(within(card).getByText("Excluded keyword matched: salary.")).toBeTruthy();
+    expect(within(card).getByText("Excluded keyword matched: required experience.")).toBeTruthy();
   });
 
   it("excludes only explicit sponsorship conflicts and quotes the JD evidence", () => {

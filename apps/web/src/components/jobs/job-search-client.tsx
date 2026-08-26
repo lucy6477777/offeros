@@ -4,9 +4,12 @@ import { useMemo, useState } from "react";
 import { Clock, Database, ExternalLink, MapPin, Search } from "lucide-react";
 import {
   assessJobMatch,
+  evaluateJobExperienceRule,
+  evaluateJobSalaryRule,
   matchesLocationCriteria,
   matchesQuery,
   type JobMatchAssessment,
+  type JobMatchPreferences,
   type JobLocationScope,
   type JobSearchCriteria,
   type SavedJobSearch,
@@ -87,12 +90,72 @@ function workAuthorizationLabel(
   return "not mentioned";
 }
 
+type FactDecision = "satisfied" | "review" | "blocker" | "observed";
+
+function compactUsd(value: number): string {
+  if (value >= 1_000 && value % 1_000 === 0) {
+    return `$${(value / 1_000).toLocaleString("en-US")}k`;
+  }
+  return `$${value.toLocaleString("en-US")}`;
+}
+
+function salaryFactLabel(assessment: JobMatchAssessment): string {
+  const salary = assessment.salary;
+  if (salary.state === "not-mentioned") return "Not mentioned";
+  if (salary.state === "unsupported") {
+    return "Not a supported annual USD cash/base amount";
+  }
+  if (salary.state === "ambiguous") return "Ambiguous compensation";
+  if (salary.bound === "range") {
+    return `${compactUsd(salary.minimum!)}–${compactUsd(salary.maximum!)} annual USD`;
+  }
+  if (salary.bound === "minimum-only") {
+    return `${compactUsd(salary.minimum!)}+ annual USD`;
+  }
+  if (salary.bound === "maximum-only") {
+    return `Up to ${compactUsd(salary.maximum!)} annual USD`;
+  }
+  return `${compactUsd(salary.minimum!)} annual USD`;
+}
+
+function experienceFactLabel(assessment: JobMatchAssessment): string {
+  const experience = assessment.experience;
+  if (experience.state === "not-mentioned") return "Not mentioned";
+  if (experience.state === "ambiguous") {
+    return "Ambiguous or non-comparable experience requirement";
+  }
+  if (experience.maximumYears !== undefined) {
+    return `${experience.minimumYears}–${experience.maximumYears} years explicitly required`;
+  }
+  return `${experience.minimumYears}+ years explicitly required`;
+}
+
+function factDecision(status: ReturnType<typeof evaluateJobSalaryRule>["status"]): FactDecision {
+  return status === "not-configured" ? "observed" : status;
+}
+
+function factDecisionLabel(decision: FactDecision): string {
+  if (decision === "satisfied") return "Rule satisfied";
+  if (decision === "review") return "Needs review";
+  if (decision === "blocker") return "Rule blocker";
+  return "Fact only — no rule set";
+}
+
+function factDecisionClass(decision: FactDecision): string {
+  if (decision === "satisfied") return "bg-success/15 text-success";
+  if (decision === "review") return "bg-warn-bg text-foreground";
+  if (decision === "blocker") return "bg-destructive/10 text-destructive";
+  return "bg-muted text-muted-foreground";
+}
+
 function JobCard({
   entry,
   assessment,
+  matchPreferences,
 }: {
   entry: JobCatalogueEntry;
   assessment?: JobMatchAssessment;
+  matchPreferences?: JobMatchPreferences;
 }) {
   const { posting } = entry;
   const providers = [...new Set(posting.sources.map((source) => source.provider))];
@@ -108,6 +171,21 @@ function JobCard({
         })),
       ]
     : [];
+  const salaryDecision =
+    assessment && matchPreferences
+      ? factDecision(
+          evaluateJobSalaryRule(assessment.salary, matchPreferences.minimumAnnualSalaryUsd).status,
+        )
+      : "observed";
+  const experienceDecision =
+    assessment && matchPreferences
+      ? factDecision(
+          evaluateJobExperienceRule(
+            assessment.experience,
+            matchPreferences.maximumRequiredExperienceYears,
+          ).status,
+        )
+      : "observed";
 
   return (
     <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -187,6 +265,56 @@ function JobCard({
               ))}
             </ul>
           )}
+          <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="rounded-lg border border-border/70 bg-background/45 p-2.5">
+              <dt className="flex flex-wrap items-center justify-between gap-2 font-medium text-foreground">
+                Salary fact
+                <span
+                  aria-label={`Salary decision: ${factDecisionLabel(salaryDecision)}`}
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-caption font-medium",
+                    factDecisionClass(salaryDecision),
+                  )}
+                >
+                  {factDecisionLabel(salaryDecision)}
+                </span>
+              </dt>
+              <dd className="mt-1 text-muted-foreground">
+                {salaryFactLabel(assessment)}
+                {assessment.salary.evidence.length > 0 && (
+                  <ul className="mt-1 space-y-1" aria-label="Salary evidence">
+                    {assessment.salary.evidence.map((detail) => (
+                      <li key={detail}>Evidence: “{detail}”</li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-background/45 p-2.5">
+              <dt className="flex flex-wrap items-center justify-between gap-2 font-medium text-foreground">
+                Experience fact
+                <span
+                  aria-label={`Experience decision: ${factDecisionLabel(experienceDecision)}`}
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-caption font-medium",
+                    factDecisionClass(experienceDecision),
+                  )}
+                >
+                  {factDecisionLabel(experienceDecision)}
+                </span>
+              </dt>
+              <dd className="mt-1 text-muted-foreground">
+                {experienceFactLabel(assessment)}
+                {assessment.experience.evidence.length > 0 && (
+                  <ul className="mt-1 space-y-1" aria-label="Experience evidence">
+                    {assessment.experience.evidence.map((detail) => (
+                      <li key={detail}>Evidence: “{detail}”</li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
+            </div>
+          </dl>
           {assessment.blockers.length > 0 && (
             <ul className="mt-2 space-y-1 text-destructive">
               {assessment.blockers.map((reason) => (
@@ -541,7 +669,12 @@ export function JobSearchClient({
         ) : (
           <div className="space-y-3">
             {visibleJobs.map(({ entry, assessment }) => (
-              <JobCard key={entry.posting.id} entry={entry} assessment={assessment} />
+              <JobCard
+                key={entry.posting.id}
+                entry={entry}
+                assessment={assessment}
+                matchPreferences={activeSavedSearch?.match}
+              />
             ))}
           </div>
         )}

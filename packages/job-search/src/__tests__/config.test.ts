@@ -42,6 +42,8 @@ describe("job search configuration", () => {
         excludedKeywords: ["contract"],
         excludedCompanies: ["Acme"],
         maximumSeniority: "senior",
+        minimumAnnualSalaryUsd: 145_000,
+        maximumRequiredExperienceYears: 5,
         eligibility: {
           usWorkAuthorization: "authorized",
           sponsorshipNeed: "required",
@@ -55,6 +57,8 @@ describe("job search configuration", () => {
       excludedKeywords: ["contract"],
       excludedCompanies: ["Acme"],
       maximumSeniority: "senior",
+      minimumAnnualSalaryUsd: 145_000,
+      maximumRequiredExperienceYears: 5,
       eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "required" },
     });
   });

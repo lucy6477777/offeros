@@ -5,6 +5,7 @@ import { ListFilter, Pencil, Play, Plus, Trash2, X } from "lucide-react";
 import {
   hasConfiguredJobSource,
   JOB_SENIORITY_LEVELS,
+  jobMatchPreferencesSchema,
   resolveJobMatchSkills,
 } from "@offeros/job-search";
 import type {
@@ -66,6 +67,12 @@ function cloneDefinition(
       excludedCompanies: [...search.match.excludedCompanies],
       eligibility: { ...search.match.eligibility },
       ...(search.match.maximumSeniority ? { maximumSeniority: search.match.maximumSeniority } : {}),
+      ...(search.match.minimumAnnualSalaryUsd === undefined
+        ? {}
+        : { minimumAnnualSalaryUsd: search.match.minimumAnnualSalaryUsd }),
+      ...(search.match.maximumRequiredExperienceYears === undefined
+        ? {}
+        : { maximumRequiredExperienceYears: search.match.maximumRequiredExperienceYears }),
     },
     sources: {
       freehire: search.sources.freehire,
@@ -98,6 +105,17 @@ function matchSummary(search: SavedJobSearch): string[] {
   if (exclusions > 0) labels.push(`${exclusions} exclusions`);
   if (search.match.maximumSeniority) {
     labels.push(`Up to ${search.match.maximumSeniority}`);
+  }
+  if (search.match.minimumAnnualSalaryUsd !== undefined) {
+    const thousands = search.match.minimumAnnualSalaryUsd / 1_000;
+    labels.push(
+      Number.isInteger(thousands)
+        ? `$${thousands.toLocaleString("en-US")}k+ annual USD`
+        : `$${search.match.minimumAnnualSalaryUsd.toLocaleString("en-US")}+ annual USD`,
+    );
+  }
+  if (search.match.maximumRequiredExperienceYears !== undefined) {
+    labels.push(`Required experience ≤ ${search.match.maximumRequiredExperienceYears}y`);
   }
   if (search.match.eligibility.usWorkAuthorization === "authorized") {
     labels.push("US work authorized");
@@ -224,14 +242,15 @@ export function SavedSearchManager({
     setBusy({ id: editingId ?? "create", action: "save" });
     setError(null);
     try {
+      const match = jobMatchPreferencesSchema.parse({
+        ...draft.match,
+        prioritySkills: cleanList(draft.match.prioritySkills),
+        excludedKeywords: cleanList(draft.match.excludedKeywords),
+        excludedCompanies: cleanList(draft.match.excludedCompanies),
+      });
       const definition: SavedJobSearchDefinition = {
         ...draft,
-        match: {
-          ...draft.match,
-          prioritySkills: cleanList(draft.match.prioritySkills),
-          excludedKeywords: cleanList(draft.match.excludedKeywords),
-          excludedCompanies: cleanList(draft.match.excludedCompanies),
-        },
+        match,
       };
       const saved = editingId
         ? await api.jobs.savedSearches.update(editingId, definition)
@@ -514,7 +533,8 @@ export function SavedSearchManager({
                 <select
                   value={draft.match.maximumSeniority ?? ""}
                   onChange={(event) => {
-                    const { maximumSeniority: _maximumSeniority, ...rest } = draft.match;
+                    const rest = { ...draft.match };
+                    Reflect.deleteProperty(rest, "maximumSeniority");
                     setDraft({
                       ...draft,
                       match: event.target.value
@@ -532,6 +552,82 @@ export function SavedSearchManager({
                   ))}
                 </select>
               </label>
+              <div className="block">
+                <label
+                  htmlFor="minimum-annual-salary"
+                  className="mb-1.5 block text-caption font-medium text-muted-foreground"
+                >
+                  Minimum listed annual salary (USD)
+                </label>
+                <input
+                  id="minimum-annual-salary"
+                  type="number"
+                  min={1_000}
+                  max={10_000_000}
+                  step={1_000}
+                  inputMode="numeric"
+                  value={draft.match.minimumAnnualSalaryUsd ?? ""}
+                  onChange={(event) => {
+                    const rest = { ...draft.match };
+                    Reflect.deleteProperty(rest, "minimumAnnualSalaryUsd");
+                    const value = event.currentTarget.valueAsNumber;
+                    setDraft({
+                      ...draft,
+                      match:
+                        event.currentTarget.value === "" || !Number.isFinite(value)
+                          ? rest
+                          : { ...rest, minimumAnnualSalaryUsd: value },
+                    });
+                  }}
+                  aria-describedby="minimum-annual-salary-help"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body text-foreground outline-none focus:ring-1 focus:ring-ring"
+                />
+                <span
+                  id="minimum-annual-salary-help"
+                  className="mt-1 block text-caption text-muted-foreground"
+                >
+                  Annual USD cash/base only. Hourly, non-USD, OTE, and unclear compensation stay
+                  reviewable.
+                </span>
+              </div>
+              <div className="block">
+                <label
+                  htmlFor="maximum-required-experience"
+                  className="mb-1.5 block text-caption font-medium text-muted-foreground"
+                >
+                  Maximum required experience (years)
+                </label>
+                <input
+                  id="maximum-required-experience"
+                  type="number"
+                  min={0}
+                  max={80}
+                  step={1}
+                  inputMode="numeric"
+                  value={draft.match.maximumRequiredExperienceYears ?? ""}
+                  onChange={(event) => {
+                    const rest = { ...draft.match };
+                    Reflect.deleteProperty(rest, "maximumRequiredExperienceYears");
+                    const value = event.currentTarget.valueAsNumber;
+                    setDraft({
+                      ...draft,
+                      match:
+                        event.currentTarget.value === "" || !Number.isFinite(value)
+                          ? rest
+                          : { ...rest, maximumRequiredExperienceYears: value },
+                    });
+                  }}
+                  aria-describedby="maximum-required-experience-help"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body text-foreground outline-none focus:ring-1 focus:ring-ring"
+                />
+                <span
+                  id="maximum-required-experience-help"
+                  className="mt-1 block text-caption text-muted-foreground"
+                >
+                  Excludes only when the JD explicitly requires a higher general minimum. Preferred,
+                  up-to, or technology-specific tenure stays reviewable.
+                </span>
+              </div>
               <label className="block">
                 <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
                   Current US work authorization

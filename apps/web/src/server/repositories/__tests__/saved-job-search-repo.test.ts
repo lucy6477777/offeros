@@ -42,6 +42,8 @@ const definition = {
     excludedKeywords: ["contract"],
     excludedCompanies: ["Blocked Labs"],
     maximumSeniority: "senior" as const,
+    minimumAnnualSalaryUsd: 120_000,
+    maximumRequiredExperienceYears: 4,
     eligibility: {
       usWorkAuthorization: "authorized" as const,
       sponsorshipNeed: "required" as const,
@@ -74,6 +76,8 @@ describe("saved-job-search repository", () => {
     expect(updated?.sources.ashby).toEqual([{ name: "beta", company: "Beta" }]);
     expect(updated?.match.prioritySkills).toEqual(["TypeScript", "PostgreSQL"]);
     expect(updated?.match.skillSource).toBe("combined");
+    expect(updated?.match.minimumAnnualSalaryUsd).toBe(120_000);
+    expect(updated?.match.maximumRequiredExperienceYears).toBe(4);
     expect(updated?.match.eligibility).toEqual({
       usWorkAuthorization: "authorized",
       sponsorshipNeed: "required",
@@ -132,5 +136,32 @@ describe("saved-job-search repository", () => {
       prioritySkills: ["TypeScript"],
     });
     expect(stored?.match.prioritySkills).not.toContain("PostgreSQL");
+    expect(stored?.match.minimumAnnualSalaryUsd).toBeUndefined();
+    expect(stored?.match.maximumRequiredExperienceYears).toBeUndefined();
+  });
+
+  it("round-trips cleared optional rules while preserving a zero-year limit", () => {
+    const created = createSavedJobSearch(db, definition, { id: "saved-1", now: 10 });
+    expect(created.match).toMatchObject({
+      minimumAnnualSalaryUsd: 120_000,
+      maximumRequiredExperienceYears: 4,
+    });
+
+    const baseMatch = { ...definition.match };
+    Reflect.deleteProperty(baseMatch, "minimumAnnualSalaryUsd");
+    Reflect.deleteProperty(baseMatch, "maximumRequiredExperienceYears");
+    const updated = updateSavedJobSearch(
+      db,
+      created.id,
+      {
+        ...definition,
+        match: { ...baseMatch, maximumRequiredExperienceYears: 0 },
+      },
+      20,
+    );
+
+    expect(updated?.match.maximumRequiredExperienceYears).toBe(0);
+    expect(updated?.match.minimumAnnualSalaryUsd).toBeUndefined();
+    expect(getSavedJobSearch(db, created.id)?.match).toEqual(updated?.match);
   });
 });

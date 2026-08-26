@@ -150,6 +150,8 @@ describe("api client", () => {
         prioritySkills: [],
         excludedKeywords: [],
         excludedCompanies: [],
+        minimumAnnualSalaryUsd: 120_000,
+        maximumRequiredExperienceYears: 0,
         eligibility: {
           usWorkAuthorization: "unknown" as const,
           sponsorshipNeed: "unknown" as const,
@@ -174,6 +176,8 @@ describe("api client", () => {
       "POST",
       "DELETE",
     ]);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual(definition);
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual(definition);
   });
 });
 

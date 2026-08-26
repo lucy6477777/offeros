@@ -131,6 +131,115 @@ describe("SavedSearchManager", () => {
     expect(screen.queryByText(/\{"/)).toBeNull();
   });
 
+  it("creates, edits, and clears optional salary and experience rules without losing zero", async () => {
+    const withRules = saved({
+      match: {
+        ...saved().match,
+        minimumAnnualSalaryUsd: 120_000,
+        maximumRequiredExperienceYears: 0,
+      },
+    });
+    const clearedSalary = saved({
+      match: {
+        ...saved().match,
+        maximumRequiredExperienceYears: 0,
+      },
+      updatedAt: 20,
+    });
+    const noNumericRules = saved({ updatedAt: 30 });
+    mocks.create.mockResolvedValue(withRules);
+    mocks.update.mockResolvedValueOnce(clearedSalary).mockResolvedValueOnce(noNumericRules);
+    render(
+      <SavedSearchManager
+        initialSavedSearches={[]}
+        profileSkills={[]}
+        onRunComplete={vi.fn()}
+        activeSearchId={null}
+        onActivate={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New saved search" }));
+    fireEvent.change(screen.getByLabelText("Search name"), {
+      target: { value: "Compensation fit" },
+    });
+    fireEvent.change(screen.getByLabelText("Saved keywords"), {
+      target: { value: "platform engineer" },
+    });
+    const salary = screen.getByLabelText("Minimum listed annual salary (USD)");
+    const experience = screen.getByLabelText("Maximum required experience (years)");
+    expect(salary.getAttribute("min")).toBe("1000");
+    expect(salary.getAttribute("max")).toBe("10000000");
+    expect(experience.getAttribute("min")).toBe("0");
+    expect(experience.getAttribute("max")).toBe("80");
+    fireEvent.change(salary, { target: { value: "120000" } });
+    fireEvent.change(experience, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save search" }));
+
+    await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+    expect(mocks.create.mock.calls[0]![0].match).toMatchObject({
+      minimumAnnualSalaryUsd: 120_000,
+      maximumRequiredExperienceYears: 0,
+    });
+    expect(screen.getByText("$120k+ annual USD")).toBeTruthy();
+    expect(screen.getByText("Required experience ≤ 0y")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(
+      (screen.getByLabelText("Minimum listed annual salary (USD)") as HTMLInputElement).value,
+    ).toBe("120000");
+    expect(
+      (screen.getByLabelText("Maximum required experience (years)") as HTMLInputElement).value,
+    ).toBe("0");
+    fireEvent.change(screen.getByLabelText("Minimum listed annual salary (USD)"), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    const updatedMatch = mocks.update.mock.calls[0]![1].match;
+    expect(updatedMatch.maximumRequiredExperienceYears).toBe(0);
+    expect(Object.prototype.hasOwnProperty.call(updatedMatch, "minimumAnnualSalaryUsd")).toBe(
+      false,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText("Maximum required experience (years)"), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledTimes(2));
+    const clearedMatch = mocks.update.mock.calls[1]![1].match;
+    expect(
+      Object.prototype.hasOwnProperty.call(clearedMatch, "maximumRequiredExperienceYears"),
+    ).toBe(false);
+  });
+
+  it("does not send invalid optional numeric rules when native validation is bypassed", async () => {
+    render(
+      <SavedSearchManager
+        initialSavedSearches={[]}
+        profileSkills={[]}
+        onRunComplete={vi.fn()}
+        activeSearchId={null}
+        onActivate={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New saved search" }));
+    fireEvent.change(screen.getByLabelText("Search name"), { target: { value: "Invalid fit" } });
+    fireEvent.change(screen.getByLabelText("Saved keywords"), {
+      target: { value: "platform engineer" },
+    });
+    fireEvent.change(screen.getByLabelText("Minimum listed annual salary (USD)"), {
+      target: { value: "0" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Save search" }).closest("form")!);
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("1000"));
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
   it("explains that at least one source must remain selected", () => {
     render(
       <SavedSearchManager

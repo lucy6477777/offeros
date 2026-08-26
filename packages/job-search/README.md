@@ -88,21 +88,29 @@ network response as local state.
 Saved Searches persist the keywords, US/Remote guard, and company Greenhouse,
 Lever, and Ashby boards as one repeatable watchlist. They also own deterministic
 shortlist rules: priority skills, excluded keywords and companies, and a title
-seniority ceiling. A saved search can also hold explicit US work-authorization
-and employer-sponsorship answers. `extractJobEligibilityFacts` reads only the
-posting text and keeps sponsorship as available, unavailable, ambiguous, or
-not mentioned. `assessJobMatch` applies explicit blockers first, then ranks the
-surviving jobs by visible role and skill evidence. It rejects an eligibility
-case only when the user's saved answer and the posting's quoted statement
-directly conflict; silence, conditional wording, and citizenship/residency
-restrictions remain reviewable. These settings screen jobs only and are never
-used to answer an application form. The score is derived on read and is not
-persisted as if it were a new fact.
+seniority ceiling. Skills may come from manual search settings, the live
+Profile, or both without copying Profile data into every saved search. A saved
+search can also hold explicit US work-authorization and employer-sponsorship
+answers, a minimum annual USD salary, and a maximum required-experience limit.
+`extractJobEligibilityFacts`, `extractJobSalaryFacts`, and
+`extractJobExperienceFacts` retain quoted posting evidence and keep missing or
+uncertain facts reviewable. Salary is used as a blocker only for explicit annual
+USD cash/base bounds. A strict annual sentence in the description may complete
+a salary field that omits its interval; conflicting annual amounts remain
+ambiguous. Experience is used only for a general, explicit minimum. Hourly or
+non-USD pay, mixed compensation, preferred qualifications,
+technology-specific tenure, and “or equivalent” language never become hard
+rejections. `evaluateJobSalaryRule` and `evaluateJobExperienceRule` expose the
+same structured decision used by `assessJobMatch`, which applies explicit
+blockers first and then ranks surviving jobs by visible role and skill evidence.
+These settings screen jobs only and are never used to answer an application
+form. The score and facts are derived on read and are not persisted as if they
+were new posting facts.
 
 Current boundary: the hosted freehire endpoint is fixed in the Web route to
 avoid arbitrary remote URL fetches; library callers may explicitly configure an
-HTTPS self-hosted instance. Scheduled scans, Profile-skill reuse, experience and
-salary rules, and AI rubric calibration remain later slices.
+HTTPS self-hosted instance. Scheduled scans and AI rubric calibration remain
+later slices.
 
 To check current public payloads without writing anywhere:
 

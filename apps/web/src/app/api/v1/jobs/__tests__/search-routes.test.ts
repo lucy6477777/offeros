@@ -194,6 +194,8 @@ describe("saved job search routes", () => {
         excludedKeywords: ["contract"],
         excludedCompanies: ["Blocked Labs"],
         maximumSeniority: "senior",
+        minimumAnnualSalaryUsd: 120_000,
+        maximumRequiredExperienceYears: 4,
         eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "required" },
       },
     };
@@ -212,17 +214,29 @@ describe("saved job search routes", () => {
     });
     expect(created.match).toEqual(definition.match);
 
+    const withoutSalary = { ...definition.match };
+    Reflect.deleteProperty(withoutSalary, "minimumAnnualSalaryUsd");
+    const editedDefinition = {
+      ...definition,
+      name: "US engineering roles",
+      match: { ...withoutSalary, maximumRequiredExperienceYears: 0 },
+    };
     const editedResponse = await savedSearchRoute.PUT(
       new Request(`http://localhost/api/v1/jobs/saved-searches/${created.id}`, {
         method: "PUT",
-        body: JSON.stringify({ ...definition, name: "US engineering roles" }),
+        body: JSON.stringify(editedDefinition),
       }),
       { params: Promise.resolve({ id: created.id }) },
     );
-    expect((await editedResponse.json()).result).toMatchObject({
+    const edited = (await editedResponse.json()).result;
+    expect(edited).toMatchObject({
       name: "US engineering roles",
-      match: definition.match,
+      match: editedDefinition.match,
     });
+    expect(edited.match.maximumRequiredExperienceYears).toBe(0);
+    expect(Object.prototype.hasOwnProperty.call(edited.match, "minimumAnnualSalaryUsd")).toBe(
+      false,
+    );
 
     const runResponse = await savedSearchRunRoute.POST(
       new Request(`http://localhost/api/v1/jobs/saved-searches/${created.id}/run`, {
@@ -238,6 +252,7 @@ describe("saved job search routes", () => {
       name: "US engineering roles",
       lastRunId: run.run.id,
       lastRunAt: run.run.finishedAt,
+      match: editedDefinition.match,
     });
 
     const listed = await (await savedSearchesRoute.GET()).json();
@@ -259,6 +274,42 @@ describe("saved job search routes", () => {
       { params: Promise.resolve({ id: created.id }) },
     );
     expect(missing.status).toBe(404);
+  });
+
+  it("rejects saved-search salary and experience rules outside the contract range", async () => {
+    const base = {
+      name: "Invalid numeric rules",
+      criteria: { query: "engineer" },
+      sources: SOURCES,
+      match: {
+        skillSource: "manual",
+        prioritySkills: [],
+        excludedKeywords: [],
+        excludedCompanies: [],
+        eligibility: { usWorkAuthorization: "unknown", sponsorshipNeed: "unknown" },
+      },
+    };
+    const lowSalary = await savedSearchesRoute.POST(
+      new Request("http://localhost/api/v1/jobs/saved-searches", {
+        method: "POST",
+        body: JSON.stringify({
+          ...base,
+          match: { ...base.match, minimumAnnualSalaryUsd: 999 },
+        }),
+      }),
+    );
+    const highExperience = await savedSearchesRoute.POST(
+      new Request("http://localhost/api/v1/jobs/saved-searches", {
+        method: "POST",
+        body: JSON.stringify({
+          ...base,
+          match: { ...base.match, maximumRequiredExperienceYears: 81 },
+        }),
+      }),
+    );
+
+    expect(lowSalary.status).toBe(400);
+    expect(highExperience.status).toBe(400);
   });
 
   it("rejects a source-free saved search", async () => {
