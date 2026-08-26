@@ -133,6 +133,38 @@ describe("api client", () => {
       sources: { freehire: true },
     });
   });
+
+  it("jobs.savedSearches uses CRUD and explicit run endpoints", async () => {
+    const fetchMock = stubFetch({
+      success: true,
+      errorCode: 10000,
+      errorMsg: null,
+      result: { id: "saved-1" },
+    });
+    const definition = {
+      name: "Remote AI roles",
+      criteria: { query: "ML engineer" },
+      sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
+    };
+
+    await api.jobs.savedSearches.create(definition);
+    await api.jobs.savedSearches.update("saved-1", definition);
+    await api.jobs.savedSearches.run("saved-1");
+    await api.jobs.savedSearches.remove("saved-1");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/jobs/saved-searches",
+      "/api/v1/jobs/saved-searches/saved-1",
+      "/api/v1/jobs/saved-searches/saved-1/run",
+      "/api/v1/jobs/saved-searches/saved-1",
+    ]);
+    expect(fetchMock.mock.calls.map(([, init]) => init.method)).toEqual([
+      "POST",
+      "PUT",
+      "POST",
+      "DELETE",
+    ]);
+  });
 });
 
 describe("isLlmNotConfigured", () => {

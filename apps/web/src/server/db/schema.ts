@@ -14,6 +14,7 @@ import type {
 import type {
   JobPosting,
   JobSearchCriteria,
+  JobSearchSources,
   JobSourceKind,
   ProviderIssue,
   ProviderRun,
@@ -121,6 +122,20 @@ export const sourceHealth = sqliteTable("source_health", {
   lastSuccessAt: integer("last_success_at"),
   lastFailureAt: integer("last_failure_at"),
   consecutiveFailures: integer("consecutive_failures").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** A user-named, repeatable search plus the public ATS boards it watches.
+ * Sources live with the search because this is a local single-user workflow;
+ * no global credential or cross-search relation is needed. */
+export const savedJobSearches = sqliteTable("saved_job_searches", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  criteria: text("criteria", { mode: "json" }).$type<JobSearchCriteria>().notNull(),
+  sources: text("sources", { mode: "json" }).$type<JobSearchSources>().notNull(),
+  lastRunId: text("last_run_id"),
+  lastRunAt: integer("last_run_at"),
+  createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -312,6 +327,7 @@ export const schema = {
   searchRuns,
   searchRunItems,
   sourceHealth,
+  savedJobSearches,
   pipelineTasks,
   settings,
   jdAnalyses,

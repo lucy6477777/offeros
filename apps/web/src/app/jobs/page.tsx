@@ -6,6 +6,7 @@ import {
   listStoredJobs,
   listStoredSearchRuns,
 } from "@/server/repositories/job-search-repo";
+import { listSavedJobSearches } from "@/server/repositories/saved-job-search-repo";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export default function JobsPage() {
         initialJobs={listStoredJobs(db)}
         initialRuns={listStoredSearchRuns(db, 10)}
         initialSourceHealth={listSourceHealth(db)}
+        initialSavedSearches={listSavedJobSearches(db)}
       />
     </main>
   );

@@ -20,6 +20,8 @@ import type { ParsedResume } from "@offeros/llm";
 import type {
   JobPosting,
   JobSearchCriteria,
+  SavedJobSearch,
+  SavedJobSearchDefinition,
   ProviderIssue,
   ProviderRun,
   ProviderRunStatus,
@@ -92,6 +94,10 @@ export type PublicJobSearchResult = {
   postings: JobCatalogueEntry[];
   providerRuns: ProviderRun[];
   stages: SearchStageCount[];
+};
+
+export type SavedJobSearchRunResult = PublicJobSearchResult & {
+  savedSearch: SavedJobSearch;
 };
 
 /** True only for the "no provider key configured" envelope, never for test-llm's plain 400s. */
@@ -275,6 +281,17 @@ export const api = {
         "/jobs/search",
         json("POST", { criteria, sources: { freehire: true } }),
       ),
+    savedSearches: {
+      list: () => request<SavedJobSearch[]>("/jobs/saved-searches"),
+      create: (definition: SavedJobSearchDefinition) =>
+        request<SavedJobSearch>("/jobs/saved-searches", json("POST", definition)),
+      update: (id: string, definition: SavedJobSearchDefinition) =>
+        request<SavedJobSearch>(`/jobs/saved-searches/${id}`, json("PUT", definition)),
+      remove: (id: string) =>
+        request<{ id: string }>(`/jobs/saved-searches/${id}`, { method: "DELETE" }),
+      run: (id: string) =>
+        request<SavedJobSearchRunResult>(`/jobs/saved-searches/${id}/run`, json("POST", {})),
+    },
   },
   settings: {
     get: () => request<ClientSettings>("/settings"),

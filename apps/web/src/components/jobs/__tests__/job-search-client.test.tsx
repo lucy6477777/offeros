@@ -12,6 +12,13 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   history: vi.fn(),
   searchPublic: vi.fn(),
+  savedSearches: {
+    list: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
+    run: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/api-client", () => ({
@@ -91,7 +98,12 @@ function health(overrides: Partial<JobSourceHealthSummary> = {}): JobSourceHealt
 
 function renderSearch(initialJobs: JobCatalogueEntry[] = []) {
   return render(
-    <JobSearchClient initialJobs={initialJobs} initialRuns={[]} initialSourceHealth={[]} />,
+    <JobSearchClient
+      initialJobs={initialJobs}
+      initialRuns={[]}
+      initialSourceHealth={[]}
+      initialSavedSearches={[]}
+    />,
   );
 }
 

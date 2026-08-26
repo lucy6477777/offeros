@@ -81,6 +81,9 @@ vi.stubGlobal("fetch", async (input: string | URL | Request) => {
 
 const jobsRoute = await import("../route");
 const searchRoute = await import("../search/route");
+const savedSearchesRoute = await import("../saved-searches/route");
+const savedSearchRoute = await import("../saved-searches/[id]/route");
+const savedSearchRunRoute = await import("../saved-searches/[id]/run/route");
 
 afterAll(() => {
   vi.unstubAllGlobals();
@@ -171,5 +174,88 @@ describe("job search routes", () => {
       new Request("http://localhost/api/v1/jobs?maxResults=not-a-number"),
     );
     expect(invalidLimit.status).toBe(400);
+  });
+});
+
+describe("saved job search routes", () => {
+  it("creates, edits, runs, lists, and deletes an ATS watchlist", async () => {
+    const definition = {
+      name: "Remote platform roles",
+      criteria: {
+        query: "engineer",
+        locationScope: "remote-us",
+        unknownLocationPolicy: "include",
+        maxResults: 100,
+      },
+      sources: SOURCES,
+    };
+    const createdResponse = await savedSearchesRoute.POST(
+      new Request("http://localhost/api/v1/jobs/saved-searches", {
+        method: "POST",
+        body: JSON.stringify(definition),
+      }),
+    );
+    const created = (await createdResponse.json()).result;
+    expect(createdResponse.status).toBe(200);
+    expect(created).toMatchObject({ name: definition.name, criteria: definition.criteria });
+
+    const editedResponse = await savedSearchRoute.PUT(
+      new Request(`http://localhost/api/v1/jobs/saved-searches/${created.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ ...definition, name: "US engineering roles" }),
+      }),
+      { params: Promise.resolve({ id: created.id }) },
+    );
+    expect((await editedResponse.json()).result.name).toBe("US engineering roles");
+
+    const runResponse = await savedSearchRunRoute.POST(
+      new Request(`http://localhost/api/v1/jobs/saved-searches/${created.id}/run`, {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: created.id }) },
+    );
+    const run = (await runResponse.json()).result;
+    expect(runResponse.status).toBe(200);
+    expect(run.run).toMatchObject({ status: "success", resultCount: 3 });
+    expect(run.savedSearch).toMatchObject({
+      id: created.id,
+      name: "US engineering roles",
+      lastRunId: run.run.id,
+      lastRunAt: run.run.finishedAt,
+    });
+
+    const listed = await (await savedSearchesRoute.GET()).json();
+    expect(listed.result).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: created.id })]),
+    );
+
+    const deleted = await savedSearchRoute.DELETE(
+      new Request(`http://localhost/api/v1/jobs/saved-searches/${created.id}`, {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: created.id }) },
+    );
+    expect(deleted.status).toBe(200);
+    const missing = await savedSearchRunRoute.POST(
+      new Request(`http://localhost/api/v1/jobs/saved-searches/${created.id}/run`, {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: created.id }) },
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  it("rejects a source-free saved search", async () => {
+    const response = await savedSearchesRoute.POST(
+      new Request("http://localhost/api/v1/jobs/saved-searches", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "No source",
+          criteria: { query: "engineer" },
+          sources: {},
+        }),
+      }),
+    );
+    expect(response.status).toBe(400);
   });
 });

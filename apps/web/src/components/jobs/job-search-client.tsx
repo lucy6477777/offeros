@@ -7,6 +7,7 @@ import {
   matchesQuery,
   type JobLocationScope,
   type JobSearchCriteria,
+  type SavedJobSearch,
 } from "@offeros/job-search";
 import {
   api,
@@ -16,6 +17,7 @@ import {
   type PublicJobSearchResult,
 } from "@/lib/api-client";
 import { EmptyState } from "@/components/empty-state";
+import { SavedSearchManager } from "@/components/jobs/saved-search-manager";
 import { cn } from "@/lib/utils";
 
 const DATE = new Intl.DateTimeFormat("en-US", {
@@ -173,10 +175,12 @@ export function JobSearchClient({
   initialJobs,
   initialRuns,
   initialSourceHealth,
+  initialSavedSearches,
 }: {
   initialJobs: JobCatalogueEntry[];
   initialRuns: JobSearchRunSummary[];
   initialSourceHealth: JobSourceHealthSummary[];
+  initialSavedSearches: SavedJobSearch[];
 }) {
   const [jobs, setJobs] = useState(initialJobs);
   const [runs, setRuns] = useState(initialRuns);
@@ -208,6 +212,14 @@ export function JobSearchClient({
   const lastRun = runs[0];
   const freehireHealth = sourceHealth.find((source) => source.provider === "freehire");
 
+  async function refreshAfterSearch(result: PublicJobSearchResult) {
+    const [catalogue, history] = await Promise.all([api.jobs.list(), api.jobs.history(10)]);
+    setOutcome(result);
+    setJobs(catalogue);
+    setRuns(history.runs);
+    setSourceHealth(history.sourceHealth);
+  }
+
   async function searchPublicJobs() {
     if (busy || !criteria.query) return;
     setBusy(true);
@@ -215,11 +227,7 @@ export function JobSearchClient({
     setOutcome(null);
     try {
       const result = await api.jobs.searchPublic({ ...criteria, maxResults: 100 });
-      const [catalogue, history] = await Promise.all([api.jobs.list(), api.jobs.history(10)]);
-      setOutcome(result);
-      setJobs(catalogue);
-      setRuns(history.runs);
-      setSourceHealth(history.sourceHealth);
+      await refreshAfterSearch(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Public search failed.");
     } finally {
@@ -331,6 +339,11 @@ export function JobSearchClient({
           </div>
         )}
       </section>
+
+      <SavedSearchManager
+        initialSavedSearches={initialSavedSearches}
+        onRunComplete={refreshAfterSearch}
+      />
 
       <section aria-labelledby="job-results-heading">
         <div className="mb-3 flex items-center justify-between gap-3">

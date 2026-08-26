@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS source_health (
   accepted INTEGER NOT NULL, rejected INTEGER NOT NULL, duration_ms INTEGER NOT NULL,
   issues TEXT NOT NULL, last_success_at INTEGER, last_failure_at INTEGER,
   consecutive_failures INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS saved_job_searches (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, criteria TEXT NOT NULL,
+  sources TEXT NOT NULL, last_run_id TEXT, last_run_at INTEGER,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS agent_tasks (
   id TEXT PRIMARY KEY, application_id TEXT NOT NULL, status TEXT NOT NULL,
   step INTEGER NOT NULL DEFAULT 0, application_info TEXT, resume_id TEXT,
@@ -89,6 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 CREATE INDEX IF NOT EXISTS idx_job_postings_last_seen ON job_postings(last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_job_sources_posting ON job_sources(job_posting_id);
 CREATE INDEX IF NOT EXISTS idx_search_run_items_run ON search_run_items(run_id, position);
+CREATE INDEX IF NOT EXISTS idx_saved_job_searches_updated ON saved_job_searches(updated_at);
 CREATE INDEX IF NOT EXISTS idx_agent_tasks_application ON agent_tasks(application_id);
 CREATE INDEX IF NOT EXISTS idx_jd_analyses_application ON jd_analyses(application_id);
 CREATE INDEX IF NOT EXISTS idx_fit_analyses_application ON fit_analyses(application_id);
