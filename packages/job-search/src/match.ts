@@ -15,6 +15,7 @@ export const JOB_SENIORITY_LEVELS = [
 ] as const;
 
 export const JOB_MATCH_VERDICTS = ["strong", "possible", "review", "skip"] as const;
+export const JOB_MATCH_SKILL_SOURCES = ["manual", "profile", "combined"] as const;
 export const US_WORK_AUTHORIZATION_STATUSES = ["unknown", "authorized", "not-authorized"] as const;
 export const US_SPONSORSHIP_NEEDS = ["unknown", "not-needed", "required"] as const;
 export const JOB_SPONSORSHIP_STATES = [
@@ -51,6 +52,7 @@ export const jobEligibilityFactsSchema = z.object({
  * become a rejection: only explicit blockers can produce `skip`. */
 export const jobMatchPreferencesSchema = z
   .object({
+    skillSource: z.enum(JOB_MATCH_SKILL_SOURCES).default("manual"),
     prioritySkills: z.array(matchTermSchema).max(50).default([]),
     excludedKeywords: z.array(matchTermSchema).max(50).default([]),
     excludedCompanies: z.array(matchTermSchema).max(50).default([]),
@@ -79,9 +81,11 @@ export const jobMatchAssessmentSchema = z.object({
 
 export type JobSeniority = (typeof JOB_SENIORITY_LEVELS)[number];
 export type JobMatchVerdict = (typeof JOB_MATCH_VERDICTS)[number];
+export type JobMatchSkillSource = (typeof JOB_MATCH_SKILL_SOURCES)[number];
 export type UsWorkAuthorizationStatus = (typeof US_WORK_AUTHORIZATION_STATUSES)[number];
 export type UsSponsorshipNeed = (typeof US_SPONSORSHIP_NEEDS)[number];
 export type JobMatchPreferences = z.infer<typeof jobMatchPreferencesSchema>;
+export type JobMatchPreferencesInput = z.input<typeof jobMatchPreferencesSchema>;
 export type JobEligibilityPreferences = z.infer<typeof jobEligibilityPreferencesSchema>;
 export type JobEligibilityFacts = z.infer<typeof jobEligibilityFactsSchema>;
 export type JobMatchEvidence = z.infer<typeof jobMatchEvidenceSchema>;
@@ -233,14 +237,57 @@ function containsPhrase(text: string, phrase: string): boolean {
   return ` ${text} `.includes(` ${phrase} `);
 }
 
-function uniqueTerms(values: string[]): string[] {
+function cleanTerms(values: readonly unknown[], limit = Number.POSITIVE_INFINITY): string[] {
   const seen = new Set<string>();
-  return values.filter((value) => {
-    const normalized = technicalText(value);
-    if (!normalized || seen.has(normalized)) return false;
+  const result: string[] = [];
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const displayValue = value.trim();
+    if (displayValue.length > 100) continue;
+    const normalized = technicalText(displayValue);
+    if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
-    return true;
-  });
+    result.push(displayValue);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function uniqueTerms(values: string[]): string[] {
+  return cleanTerms(values);
+}
+
+export type ResolvedJobMatchSkills = {
+  source: JobMatchSkillSource;
+  skills: string[];
+  manualSkills: string[];
+  profileSkills: string[];
+  profileMissing: boolean;
+};
+
+/** Resolve the live skill set used by deterministic matching. Profile skills
+ * are runtime context and are never copied into the saved-search preferences. */
+export function resolveJobMatchSkills(
+  preferences: Pick<JobMatchPreferences, "skillSource" | "prioritySkills">,
+  rawProfileSkills: readonly unknown[] = [],
+): ResolvedJobMatchSkills {
+  const source = preferences.skillSource;
+  const manualSkills = cleanTerms(preferences.prioritySkills, 50);
+  const profileSkills = cleanTerms(rawProfileSkills, 50);
+  const selectedSkills =
+    source === "manual"
+      ? manualSkills
+      : source === "profile"
+        ? profileSkills
+        : cleanTerms([...manualSkills, ...profileSkills], 50);
+
+  return {
+    source,
+    skills: selectedSkills,
+    manualSkills,
+    profileSkills,
+    profileMissing: source !== "manual" && profileSkills.length === 0,
+  };
 }
 
 function postingText(posting: JobPosting) {
@@ -317,7 +364,8 @@ function roleScore(
 export function assessJobMatch(
   posting: JobPosting,
   query: string,
-  rawPreferences: JobMatchPreferences,
+  rawPreferences: JobMatchPreferencesInput,
+  context: { profileSkills?: readonly string[] } = {},
 ): JobMatchAssessment {
   const preferences = jobMatchPreferencesSchema.parse(rawPreferences);
   const text = postingText(posting);
@@ -449,7 +497,22 @@ export function assessJobMatch(
     });
   }
 
-  const prioritySkills = uniqueTerms(preferences.prioritySkills);
+  const resolvedSkills = resolveJobMatchSkills(preferences, context.profileSkills);
+  const prioritySkills = resolvedSkills.skills;
+  let skillSourceNeedsReview = false;
+  if (resolvedSkills.source === "profile" && resolvedSkills.profileMissing) {
+    reviewReasons.push("Profile has no skills, so skill evidence is unavailable.");
+    skillSourceNeedsReview = true;
+  } else if (
+    resolvedSkills.source === "combined" &&
+    resolvedSkills.profileMissing &&
+    resolvedSkills.manualSkills.length === 0
+  ) {
+    reviewReasons.push(
+      "Profile has no skills and no manual priority skills are set, so skill evidence is unavailable.",
+    );
+    skillSourceNeedsReview = true;
+  }
   const matchedSkills: string[] = [];
   const missingSkills: string[] = [];
   for (const skill of prioritySkills) {
@@ -479,7 +542,7 @@ export function assessJobMatch(
 
   let verdict: JobMatchVerdict;
   if (blockers.length > 0) verdict = "skip";
-  else if (eligibilityNeedsReview) verdict = "review";
+  else if (eligibilityNeedsReview || skillSourceNeedsReview) verdict = "review";
   else if (score >= 75) verdict = "strong";
   else if (score >= 45) verdict = "possible";
   else verdict = "review";

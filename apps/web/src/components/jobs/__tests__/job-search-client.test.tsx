@@ -100,6 +100,7 @@ function health(overrides: Partial<JobSourceHealthSummary> = {}): JobSourceHealt
 function renderSearch(
   initialJobs: JobCatalogueEntry[] = [],
   initialSavedSearches: SavedJobSearch[] = [],
+  initialProfileSkills: string[] = [],
 ) {
   return render(
     <JobSearchClient
@@ -107,6 +108,7 @@ function renderSearch(
       initialRuns={[]}
       initialSourceHealth={[]}
       initialSavedSearches={initialSavedSearches}
+      initialProfileSkills={initialProfileSkills}
     />,
   );
 }
@@ -254,6 +256,7 @@ describe("JobSearchClient", () => {
       },
       sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
       match: {
+        skillSource: "manual",
         prioritySkills: ["TypeScript"],
         excludedKeywords: ["contract"],
         excludedCompanies: [],
@@ -308,6 +311,7 @@ describe("JobSearchClient", () => {
       },
       sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
       match: {
+        skillSource: "manual",
         prioritySkills: ["TypeScript"],
         excludedKeywords: [],
         excludedCompanies: [],
@@ -356,5 +360,43 @@ describe("JobSearchClient", () => {
     expect(
       screen.getAllByText("Sponsorship evidence:").at(-1)?.closest("li")?.textContent,
     ).toContain("We do not provide visa sponsorship now or in the future.");
+  });
+
+  it("uses live Profile skills when assessing a Profile-backed shortlist", () => {
+    const savedSearch: SavedJobSearch = {
+      id: "saved-profile",
+      name: "Live Profile fit",
+      criteria: {
+        query: "platform engineer",
+        locationScope: "remote-us",
+        unknownLocationPolicy: "include",
+        maxResults: 100,
+      },
+      sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
+      match: {
+        skillSource: "profile",
+        prioritySkills: ["Rust"],
+        excludedKeywords: [],
+        excludedCompanies: [],
+        eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "not-needed" },
+      },
+      createdAt: 10,
+      updatedAt: 10,
+    };
+
+    renderSearch(
+      [
+        entry("profile-match", {
+          liveness: "open",
+          description: "Build platform services with TypeScript.",
+        }),
+      ],
+      [savedSearch],
+      ["TypeScript", "PostgreSQL"],
+    );
+
+    expect(screen.getByText(/Skills found:/).closest("p")?.textContent).toContain("TypeScript");
+    expect(screen.getByText(/Not found in available JD text:/).textContent).toContain("PostgreSQL");
+    expect(screen.queryByText(/Rust/)).toBeNull();
   });
 });

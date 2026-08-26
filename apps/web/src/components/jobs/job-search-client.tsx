@@ -276,11 +276,13 @@ export function JobSearchClient({
   initialRuns,
   initialSourceHealth,
   initialSavedSearches,
+  initialProfileSkills,
 }: {
   initialJobs: JobCatalogueEntry[];
   initialRuns: JobSearchRunSummary[];
   initialSourceHealth: JobSourceHealthSummary[];
   initialSavedSearches: SavedJobSearch[];
+  initialProfileSkills: string[];
 }) {
   const initialActiveSearch = initialSavedSearches[0] ?? null;
   const [jobs, setJobs] = useState(initialJobs);
@@ -319,7 +321,14 @@ export function JobSearchClient({
       .map((entry) => ({
         entry,
         assessment: activeSavedSearch
-          ? assessJobMatch(entry.posting, activeSavedSearch.criteria.query, activeSavedSearch.match)
+          ? assessJobMatch(
+              entry.posting,
+              activeSavedSearch.criteria.query,
+              activeSavedSearch.match,
+              {
+                profileSkills: initialProfileSkills,
+              },
+            )
           : undefined,
       }));
     if (!activeSavedSearch) return filtered;
@@ -328,7 +337,7 @@ export function JobSearchClient({
       if (left.assessment!.verdict !== "skip" && right.assessment!.verdict === "skip") return -1;
       return right.assessment!.score - left.assessment!.score;
     });
-  }, [activeSavedSearch, criteria, jobs]);
+  }, [activeSavedSearch, criteria, initialProfileSkills, jobs]);
   const skippedCount = assessedJobs.filter((item) => item.assessment?.verdict === "skip").length;
   const visibleJobs = showSkipped
     ? assessedJobs
@@ -486,6 +495,7 @@ export function JobSearchClient({
 
       <SavedSearchManager
         initialSavedSearches={initialSavedSearches}
+        profileSkills={initialProfileSkills}
         onRunComplete={refreshAfterSearch}
         activeSearchId={activeSavedSearch?.id ?? null}
         onActivate={activateSavedSearch}

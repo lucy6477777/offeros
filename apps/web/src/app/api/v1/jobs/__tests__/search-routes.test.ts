@@ -189,6 +189,7 @@ describe("saved job search routes", () => {
       },
       sources: SOURCES,
       match: {
+        skillSource: "combined",
         prioritySkills: ["TypeScript", "PostgreSQL"],
         excludedKeywords: ["contract"],
         excludedCompanies: ["Blocked Labs"],
@@ -209,6 +210,7 @@ describe("saved job search routes", () => {
       criteria: definition.criteria,
       match: definition.match,
     });
+    expect(created.match).toEqual(definition.match);
 
     const editedResponse = await savedSearchRoute.PUT(
       new Request(`http://localhost/api/v1/jobs/saved-searches/${created.id}`, {

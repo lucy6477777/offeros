@@ -24,6 +24,7 @@ describe("job search configuration", () => {
     expect(parsed.criteria.query).toBe("platform engineer");
     expect(parsed.sources).toMatchObject({ freehire: false, ashby: [] });
     expect(parsed.match).toEqual({
+      skillSource: "manual",
       prioritySkills: [],
       excludedKeywords: [],
       excludedCompanies: [],
@@ -49,6 +50,7 @@ describe("job search configuration", () => {
     });
 
     expect(parsed.match).toEqual({
+      skillSource: "manual",
       prioritySkills: ["TypeScript", "PostgreSQL"],
       excludedKeywords: ["contract"],
       excludedCompanies: ["Acme"],

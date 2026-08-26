@@ -2,9 +2,15 @@
 
 import { useState, type FormEvent } from "react";
 import { ListFilter, Pencil, Play, Plus, Trash2, X } from "lucide-react";
-import { hasConfiguredJobSource, JOB_SENIORITY_LEVELS } from "@offeros/job-search";
+import {
+  hasConfiguredJobSource,
+  JOB_SENIORITY_LEVELS,
+  resolveJobMatchSkills,
+} from "@offeros/job-search";
 import type {
   JobLocationScope,
+  JobMatchPreferences,
+  JobMatchSkillSource,
   JobSeniority,
   SavedJobSearch,
   SavedJobSearchDefinition,
@@ -33,6 +39,7 @@ const EMPTY_DEFINITION: SavedJobSearchDefinition = {
   },
   sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
   match: {
+    skillSource: "manual",
     prioritySkills: [],
     excludedKeywords: [],
     excludedCompanies: [],
@@ -40,12 +47,20 @@ const EMPTY_DEFINITION: SavedJobSearchDefinition = {
   },
 };
 
-function cloneDefinition(search?: SavedJobSearch): SavedJobSearchDefinition {
-  if (!search) return structuredClone(EMPTY_DEFINITION);
+function cloneDefinition(
+  search?: SavedJobSearch,
+  newSkillSource: JobMatchSkillSource = "manual",
+): SavedJobSearchDefinition {
+  if (!search) {
+    const definition = structuredClone(EMPTY_DEFINITION);
+    definition.match.skillSource = newSkillSource;
+    return definition;
+  }
   return {
     name: search.name,
     criteria: { ...search.criteria },
     match: {
+      skillSource: search.match.skillSource ?? "manual",
       prioritySkills: [...search.match.prioritySkills],
       excludedKeywords: [...search.match.excludedKeywords],
       excludedCompanies: [...search.match.excludedCompanies],
@@ -71,8 +86,13 @@ function cleanList(values: string[]): string[] {
 
 function matchSummary(search: SavedJobSearch): string[] {
   const labels: string[] = [];
-  if (search.match.prioritySkills.length > 0) {
-    labels.push(`${search.match.prioritySkills.length} priority skills`);
+  const skillSource = search.match.skillSource ?? "manual";
+  if (skillSource === "profile") {
+    labels.push("Profile skills");
+  } else if (skillSource === "combined") {
+    labels.push(`Profile + ${search.match.prioritySkills.length} custom`);
+  } else {
+    labels.push(`${search.match.prioritySkills.length} custom skills`);
   }
   const exclusions = search.match.excludedKeywords.length + search.match.excludedCompanies.length;
   if (exclusions > 0) labels.push(`${exclusions} exclusions`);
@@ -107,17 +127,66 @@ function removeAt<T>(values: T[], index: number): T[] {
   return values.filter((_, current) => current !== index);
 }
 
+type ProfileSkillBreakdown = {
+  included: string[];
+  covered: string[];
+  limited: string[];
+};
+
+function areEquivalentSkills(left: string, right: string): boolean {
+  return (
+    resolveJobMatchSkills({ skillSource: "manual", prioritySkills: [left, right] }, []).manualSkills
+      .length === 1
+  );
+}
+
+function profileSkillBreakdown(
+  preferences: Pick<JobMatchPreferences, "skillSource" | "prioritySkills">,
+  rawProfileSkills: string[],
+): ProfileSkillBreakdown {
+  const resolved = resolveJobMatchSkills(preferences, rawProfileSkills);
+  if (resolved.source === "profile") {
+    return { included: resolved.profileSkills, covered: [], limited: [] };
+  }
+  if (resolved.source !== "combined") {
+    return { included: [], covered: [], limited: [] };
+  }
+
+  const covered = resolved.profileSkills.filter((profileSkill) =>
+    resolved.manualSkills.some((manualSkill) => areEquivalentSkills(manualSkill, profileSkill)),
+  );
+  const uniqueContributions = resolved.profileSkills.filter(
+    (profileSkill) => !covered.includes(profileSkill),
+  );
+  const availableSlots = Math.max(0, 50 - resolved.manualSkills.length);
+  return {
+    included: uniqueContributions.slice(0, availableSlots),
+    covered,
+    limited: uniqueContributions.slice(availableSlots),
+  };
+}
+
+function skillListPreview(skills: string[]): string {
+  return `${skills.slice(0, 8).join(", ")}${skills.length > 8 ? "…" : ""}`;
+}
+
 export function SavedSearchManager({
   initialSavedSearches,
+  profileSkills,
   onRunComplete,
   activeSearchId,
   onActivate,
 }: {
   initialSavedSearches: SavedJobSearch[];
+  profileSkills: string[];
   onRunComplete: (result: SavedJobSearchRunResult) => Promise<void>;
   activeSearchId: string | null;
   onActivate: (search: SavedJobSearch | null) => void;
 }) {
+  const usableProfileSkills = resolveJobMatchSkills(
+    { skillSource: "profile", prioritySkills: [] },
+    profileSkills,
+  ).profileSkills;
   const [searches, setSearches] = useState(initialSavedSearches);
   const [draft, setDraft] = useState<SavedJobSearchDefinition | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -129,7 +198,7 @@ export function SavedSearchManager({
 
   function startNew() {
     setEditingId(null);
-    setDraft(cloneDefinition());
+    setDraft(cloneDefinition(undefined, usableProfileSkills.length > 0 ? "profile" : "manual"));
     setError(null);
   }
 
@@ -176,6 +245,10 @@ export function SavedSearchManager({
       setBusy(null);
     }
   }
+
+  const profileBreakdown = draft
+    ? profileSkillBreakdown(draft.match, usableProfileSkills)
+    : { included: [], covered: [], limited: [] };
 
   async function remove(search: SavedJobSearch) {
     if (busy) return;
@@ -324,23 +397,116 @@ export function SavedSearchManager({
               Local, deterministic evidence only. Missing JD facts stay reviewable instead of being
               silently rejected.
             </p>
+            <fieldset className="mt-4 rounded-xl border border-border bg-background/70 p-3">
+              <legend className="px-1 text-caption font-semibold text-foreground">
+                Skills used for ranking
+              </legend>
+              <div className="mt-1 grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    ["profile", "My Profile skills"],
+                    ["combined", "Profile + search-specific skills"],
+                    ["manual", "Search-specific skills only"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <label
+                    key={value}
+                    className="flex items-start gap-2 rounded-lg border border-border px-3 py-2 text-caption text-foreground"
+                  >
+                    <input
+                      type="radio"
+                      name="skill-source"
+                      value={value}
+                      checked={draft.match.skillSource === value}
+                      onChange={() =>
+                        setDraft({
+                          ...draft,
+                          match: { ...draft.match, skillSource: value },
+                        })
+                      }
+                      className="mt-0.5 size-4 border-border"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+
+              {draft.match.skillSource !== "manual" &&
+                (usableProfileSkills.length > 0 ? (
+                  <div className="mt-3 rounded-lg bg-muted/60 p-3 text-caption text-muted-foreground">
+                    {profileBreakdown.included.length > 0 ? (
+                      <p>
+                        Using {profileBreakdown.included.length} Profile skill
+                        {profileBreakdown.included.length === 1 ? "" : "s"} for ranking:{" "}
+                        <span className="font-medium text-foreground">
+                          {skillListPreview(profileBreakdown.included)}
+                        </span>
+                      </p>
+                    ) : (
+                      <p>No Profile skills are currently included in ranking.</p>
+                    )}
+                    {profileBreakdown.covered.length > 0 && (
+                      <p className="mt-1 text-foreground">
+                        {profileBreakdown.covered.length} Profile skill
+                        {profileBreakdown.covered.length === 1 ? " is" : "s are"} already covered by
+                        equivalent search-specific additions:{" "}
+                        <span className="font-medium">
+                          {skillListPreview(profileBreakdown.covered)}
+                        </span>
+                      </p>
+                    )}
+                    {profileBreakdown.limited.length > 0 && (
+                      <p className="mt-1 text-foreground">
+                        {profileBreakdown.limited.length} Profile skill
+                        {profileBreakdown.limited.length === 1 ? " is" : "s are"} excluded by the
+                        50-skill ranking limit:{" "}
+                        <span className="font-medium">
+                          {skillListPreview(profileBreakdown.limited)}
+                        </span>
+                      </p>
+                    )}
+                    <a
+                      href="/profile"
+                      className="mt-1 inline-block font-semibold text-primary hover:underline"
+                    >
+                      Edit Profile skills
+                    </a>
+                  </div>
+                ) : (
+                  <div
+                    role="status"
+                    className="mt-3 rounded-lg border border-warn/30 bg-warn-bg p-3 text-caption text-foreground"
+                  >
+                    Your Profile has no usable skills yet. This search can still be saved, but
+                    Profile skill evidence will need review.{" "}
+                    <a href="/profile" className="font-semibold text-primary hover:underline">
+                      Add skills to Profile
+                    </a>
+                  </div>
+                ))}
+            </fieldset>
+
             <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
-                  Priority skills
-                </span>
-                <input
-                  value={draft.match.prioritySkills.join(", ")}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      match: { ...draft.match, prioritySkills: draftList(event.target.value) },
-                    })
-                  }
-                  placeholder="TypeScript, Python, PostgreSQL"
-                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body text-foreground outline-none focus:ring-1 focus:ring-ring"
-                />
-              </label>
+              {draft.match.skillSource !== "profile" && (
+                <label className="block">
+                  <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
+                    {draft.match.skillSource === "combined"
+                      ? "Search-specific skill additions"
+                      : "Search-specific priority skills"}
+                  </span>
+                  <input
+                    value={draft.match.prioritySkills.join(", ")}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        match: { ...draft.match, prioritySkills: draftList(event.target.value) },
+                      })
+                    }
+                    placeholder="TypeScript, Python, PostgreSQL"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body text-foreground outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </label>
+              )}
               <label className="block">
                 <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
                   Maximum title seniority

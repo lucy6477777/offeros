@@ -146,6 +146,7 @@ describe("api client", () => {
       criteria: { query: "ML engineer" },
       sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
       match: {
+        skillSource: "manual" as const,
         prioritySkills: [],
         excludedKeywords: [],
         excludedCompanies: [],

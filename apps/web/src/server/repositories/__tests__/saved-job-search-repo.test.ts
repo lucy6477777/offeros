@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDb, type Db } from "../../db/client";
+import { savedJobSearches } from "../../db/schema";
 import {
   createSavedJobSearch,
   deleteSavedJobSearch,
@@ -36,6 +37,7 @@ const definition = {
     ashby: [],
   },
   match: {
+    skillSource: "combined" as const,
     prioritySkills: ["TypeScript", "PostgreSQL"],
     excludedKeywords: ["contract"],
     excludedCompanies: ["Blocked Labs"],
@@ -71,6 +73,7 @@ describe("saved-job-search repository", () => {
     expect(updated).toMatchObject({ name: "US platform roles", updatedAt: 20 });
     expect(updated?.sources.ashby).toEqual([{ name: "beta", company: "Beta" }]);
     expect(updated?.match.prioritySkills).toEqual(["TypeScript", "PostgreSQL"]);
+    expect(updated?.match.skillSource).toBe("combined");
     expect(updated?.match.eligibility).toEqual({
       usWorkAuthorization: "authorized",
       sponsorshipNeed: "required",
@@ -103,5 +106,31 @@ describe("saved-job-search repository", () => {
       }),
     ).toThrow(/at least one job source is required/);
     expect(listSavedJobSearches(db)).toEqual([]);
+  });
+
+  it("parses legacy stored preferences as manual without copying Profile skills", () => {
+    db.insert(savedJobSearches)
+      .values({
+        id: "legacy",
+        name: definition.name,
+        criteria: definition.criteria,
+        sources: definition.sources,
+        matchPreferences: {
+          prioritySkills: ["TypeScript"],
+          excludedKeywords: [],
+          excludedCompanies: [],
+          eligibility: { usWorkAuthorization: "unknown", sponsorshipNeed: "unknown" },
+        },
+        createdAt: 10,
+        updatedAt: 10,
+      } as unknown as typeof savedJobSearches.$inferInsert)
+      .run();
+
+    const stored = getSavedJobSearch(db, "legacy");
+    expect(stored?.match).toMatchObject({
+      skillSource: "manual",
+      prioritySkills: ["TypeScript"],
+    });
+    expect(stored?.match.prioritySkills).not.toContain("PostgreSQL");
   });
 });

@@ -4,6 +4,8 @@ import {
   assessJobMatch,
   extractJobEligibilityFacts,
   inferJobSeniority,
+  jobMatchPreferencesSchema,
+  resolveJobMatchSkills,
   type JobMatchPreferences,
 } from "../match";
 
@@ -33,6 +35,7 @@ function posting(overrides: Partial<JobPosting> = {}): JobPosting {
 
 function preferences(overrides: Partial<JobMatchPreferences> = {}): JobMatchPreferences {
   return {
+    skillSource: "manual",
     prioritySkills: [],
     excludedKeywords: [],
     excludedCompanies: [],
@@ -42,6 +45,105 @@ function preferences(overrides: Partial<JobMatchPreferences> = {}): JobMatchPref
 }
 
 describe("deterministic job matching", () => {
+  it("defaults old preferences to manual skills and round-trips every skill source", () => {
+    expect(
+      jobMatchPreferencesSchema.parse({
+        prioritySkills: [],
+        excludedKeywords: [],
+        excludedCompanies: [],
+        eligibility: {},
+      }).skillSource,
+    ).toBe("manual");
+
+    for (const skillSource of ["manual", "profile", "combined"] as const) {
+      expect(
+        jobMatchPreferencesSchema.parse({
+          skillSource,
+          prioritySkills: [],
+          excludedKeywords: [],
+          excludedCompanies: [],
+          eligibility: {},
+        }).skillSource,
+      ).toBe(skillSource);
+    }
+  });
+
+  it("resolves manual, profile, and combined skills with stable normalized deduplication", () => {
+    const manual = preferences({
+      skillSource: "manual",
+      prioritySkills: [" TypeScript ", "Node.js", "NodeJS"],
+    });
+    const profile = [" nodejs ", "PostgreSQL", "", "TypeScript"];
+
+    expect(resolveJobMatchSkills(manual, profile)).toMatchObject({
+      source: "manual",
+      skills: ["TypeScript", "Node.js"],
+      profileMissing: false,
+    });
+    expect(resolveJobMatchSkills({ ...manual, skillSource: "profile" }, profile)).toMatchObject({
+      source: "profile",
+      skills: ["nodejs", "PostgreSQL", "TypeScript"],
+      profileMissing: false,
+    });
+    expect(resolveJobMatchSkills({ ...manual, skillSource: "combined" }, profile)).toMatchObject({
+      source: "combined",
+      skills: ["TypeScript", "Node.js", "PostgreSQL"],
+      manualSkills: ["TypeScript", "Node.js"],
+      profileSkills: ["nodejs", "PostgreSQL", "TypeScript"],
+      profileMissing: false,
+    });
+  });
+
+  it("defensively cleans profile skills, caps the final set, and reports missing profile data", () => {
+    const dirtyProfile = [
+      null,
+      undefined,
+      42,
+      " ",
+      "x".repeat(101),
+      ...Array.from({ length: 55 }, (_, i) => ` Skill ${i} `),
+    ];
+    const profilePreferences = preferences({ skillSource: "profile" });
+    const resolved = resolveJobMatchSkills(profilePreferences, dirtyProfile);
+
+    expect(resolved.skills).toHaveLength(50);
+    expect(resolved.skills[0]).toBe("Skill 0");
+    expect(resolved.skills[49]).toBe("Skill 49");
+    expect(resolved.profileMissing).toBe(false);
+    expect(resolveJobMatchSkills(profilePreferences, [null, " "]).profileMissing).toBe(true);
+    expect(resolveJobMatchSkills(profilePreferences, ["x".repeat(101)]).profileMissing).toBe(true);
+    expect(resolveJobMatchSkills(preferences({ skillSource: "manual" }), []).profileMissing).toBe(
+      false,
+    );
+  });
+
+  it("caps combined skills at 50 with manual-first ordering and cross-source aliases deduped", () => {
+    const fortyNineManual = [
+      "Node.js",
+      ...Array.from({ length: 48 }, (_, i) => `Manual Skill ${i}`),
+    ];
+    const withOneProfileSlot = resolveJobMatchSkills(
+      preferences({ skillSource: "combined", prioritySkills: fortyNineManual }),
+      ["NodeJS", "Profile Skill 0", "Profile Skill 1"],
+    );
+
+    expect(withOneProfileSlot.skills).toHaveLength(50);
+    expect(withOneProfileSlot.skills.slice(0, 49)).toEqual(fortyNineManual);
+    expect(withOneProfileSlot.skills[49]).toBe("Profile Skill 0");
+    expect(withOneProfileSlot.skills).not.toContain("NodeJS");
+    expect(withOneProfileSlot.skills).not.toContain("Profile Skill 1");
+
+    const fiftyManual = [...fortyNineManual, "Manual Skill 48"];
+    const withoutProfileSlots = resolveJobMatchSkills(
+      preferences({ skillSource: "combined", prioritySkills: fiftyManual }),
+      ["NodeJS", "Profile Skill 0"],
+    );
+
+    expect(withoutProfileSlots.skills).toEqual(fiftyManual);
+    expect(withoutProfileSlots.skills).toHaveLength(50);
+    expect(withoutProfileSlots.skills).not.toContain("Profile Skill 0");
+  });
+
   it("ranks explicit role and skill evidence without an AI call", () => {
     const result = assessJobMatch(
       posting(),
@@ -205,6 +307,82 @@ describe("deterministic job matching", () => {
     expect(result.eligibility.sponsorship.state).toBe("available");
     expect(result.reviewReasons).toContain(
       "The posting requires current US work authorization but also mentions sponsorship; verify the apparent conflict.",
+    );
+  });
+
+  it("scores profile-only skills from live runtime context", () => {
+    const result = assessJobMatch(
+      posting(),
+      "platform engineer",
+      preferences({ skillSource: "profile", prioritySkills: ["Rust"] }),
+      { profileSkills: ["TypeScript", "NodeJS", "Python"] },
+    );
+
+    expect(result).toMatchObject({
+      verdict: "strong",
+      score: 87,
+      matchedSkills: ["TypeScript", "NodeJS"],
+      missingSkills: ["Python"],
+      blockers: [],
+    });
+  });
+
+  it("reviews an empty profile source without turning it into a blocker", () => {
+    const result = assessJobMatch(
+      posting(),
+      "platform engineer",
+      preferences({ skillSource: "profile", prioritySkills: ["TypeScript"] }),
+      { profileSkills: [] },
+    );
+
+    expect(result.verdict).toBe("review");
+    expect(result.blockers).toEqual([]);
+    expect(result.matchedSkills).toEqual([]);
+    expect(result.reviewReasons).toContain(
+      "Profile has no skills, so skill evidence is unavailable.",
+    );
+  });
+
+  it("keeps explicit blockers above an empty-profile review", () => {
+    const result = assessJobMatch(
+      posting({ company: "Blocked Labs" }),
+      "platform engineer",
+      preferences({
+        skillSource: "profile",
+        excludedCompanies: ["Blocked Labs"],
+      }),
+      { profileSkills: [] },
+    );
+
+    expect(result.verdict).toBe("skip");
+    expect(result.blockers).toContain("Excluded company matched: Blocked Labs.");
+    expect(result.reviewReasons).toContain(
+      "Profile has no skills, so skill evidence is unavailable.",
+    );
+  });
+
+  it("falls back quietly to manual skills for combined mode when Profile is empty", () => {
+    const withManual = assessJobMatch(
+      posting(),
+      "platform engineer",
+      preferences({ skillSource: "combined", prioritySkills: ["TypeScript", "Node.js"] }),
+      { profileSkills: [] },
+    );
+    const withoutManual = assessJobMatch(
+      posting(),
+      "platform engineer",
+      preferences({ skillSource: "combined" }),
+      { profileSkills: [] },
+    );
+
+    expect(withManual.verdict).toBe("strong");
+    expect(withManual.matchedSkills).toEqual(["TypeScript", "Node.js"]);
+    expect(withManual.reviewReasons).not.toContain(
+      "Profile has no skills and no manual priority skills are set, so skill evidence is unavailable.",
+    );
+    expect(withoutManual.verdict).toBe("review");
+    expect(withoutManual.reviewReasons).toContain(
+      "Profile has no skills and no manual priority skills are set, so skill evidence is unavailable.",
     );
   });
 
