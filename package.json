@@ -51,7 +51,7 @@
     "dev:web": "npm run dev -w @offeros/web",
     "build": "npm run build -w @offeros/web",
     "compile": "npm run compile -w @offeros/extension",
-    "typecheck": "npm run compile -w @offeros/extension && npm run compile -w @offeros/web && npm run typecheck -w @offeros/core",
+    "typecheck": "npm run compile -w @offeros/extension && npm run compile -w @offeros/web && npm run typecheck -w @offeros/core && npm run typecheck -w @offeros/job-search",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

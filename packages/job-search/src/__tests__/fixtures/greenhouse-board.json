@@ -1,0 +1,18 @@
+{
+  "jobs": [
+    {
+      "id": 12345,
+      "title": "Platform Engineer",
+      "updated_at": "2026-08-20T14:30:00-04:00",
+      "location": { "name": "Remote, United States" },
+      "absolute_url": "https://job-boards.greenhouse.io/acme/jobs/12345?gh_src=test",
+      "content": "&lt;p&gt;Build &lt;strong&gt;TypeScript&lt;/strong&gt; platform services.&lt;/p&gt;",
+      "departments": [{ "id": 7, "name": "Engineering" }]
+    },
+    {
+      "id": 99999,
+      "title": "Missing URL"
+    }
+  ],
+  "meta": { "total": 2 }
+}

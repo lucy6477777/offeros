@@ -1,0 +1,29 @@
+{
+  "name": "@offeros/job-search",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Provider-based job discovery, normalization, diagnostics, and deduplication for OfferOS.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/averatec0773/offeros.git",
+    "directory": "packages/job-search"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. --project @offeros/job-search",
+    "typecheck": "tsc --noEmit",
+    "probe:live": "vite-node scripts/live-provider-probe.ts"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

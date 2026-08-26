@@ -1,0 +1,24 @@
+[
+  {
+    "id": "49b8b94c-a7f4-4838-a9fb-265f6b55bf93",
+    "text": "Lead Software Engineer",
+    "categories": {
+      "location": "United States",
+      "commitment": "Full-time",
+      "team": "API Engineering"
+    },
+    "country": "us",
+    "descriptionPlain": "Lead a TypeScript API platform team.",
+    "additionalPlain": "This role is remote-first.",
+    "hostedUrl": "https://jobs.eu.lever.co/fundrise/49b8b94c-a7f4-4838-a9fb-265f6b55bf93",
+    "applyUrl": "https://jobs.eu.lever.co/fundrise/49b8b94c-a7f4-4838-a9fb-265f6b55bf93/apply",
+    "workplaceType": "remote",
+    "salaryRange": {
+      "currency": "USD",
+      "interval": "per-year-salary",
+      "min": 190000,
+      "max": 250000
+    },
+    "createdAt": 1787223091267
+  }
+]
