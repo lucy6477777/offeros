@@ -17,6 +17,8 @@
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "node scripts/e2e-sidepanel.mjs",
+    "e2e:vertical": "node scripts/e2e-vertical-slice.mjs",
+    "probe:ats-live": "node scripts/live-ats-probe.mjs",
     "adaptation:pdf": "node scripts/resume-adaptation.mjs",
     "probe:workday": "node scripts/workday-skills-probe.mjs",
     "test:watch": "vitest",

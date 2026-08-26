@@ -151,6 +151,7 @@ const trace = (over: Partial<FieldTrace>): FieldTrace => ({
   classifiedType: "unknown",
   status: "fillable",
   chosenValue: "",
+  beforeValue: "",
   source: "none",
   reason: "",
   questionKey: "k-f1",
@@ -175,6 +176,8 @@ describe("buildFieldReports", () => {
       outcome: "filled",
       source: "personal",
       value: "a@b.c",
+      confidence: "high",
+      before: "",
       required: true,
       page: "page-1",
     });
@@ -192,6 +195,7 @@ describe("buildFieldReports", () => {
     ];
     const r = buildFieldReports(t, new Map(), new Set(["f1"]), "p")[0]!;
     expect(r.outcome).toBe("needs-user");
+    expect(r.confidence).toBe("low");
     expect(r.value).toBeUndefined();
   });
 
@@ -212,6 +216,27 @@ describe("buildFieldReports", () => {
       "p",
     )[0]!;
     expect(r).toMatchObject({ outcome: "filled", source: "ai-generated", value: "Because…" });
+    expect(r.confidence).toBe("medium");
+  });
+
+  it("carries the DOM-observed before/after evidence into the report", () => {
+    const t = [
+      trace({
+        fieldId: "f1",
+        label: "Phone",
+        classifiedType: "phone",
+        chosenValue: "5550100",
+        source: "personal",
+        beforeValue: "",
+      }),
+    ];
+    const r = buildFieldReports(
+      t,
+      new Map([["f1", { outcome: "filled" as const, before: "", after: "(555) 010-0" }]]),
+      new Set(["f1"]),
+      "p",
+    )[0]!;
+    expect(r).toMatchObject({ before: "", after: "(555) 010-0", confidence: "high" });
   });
 
   it("derives source ai-generated from a generate-source trace even with a bare string write", () => {

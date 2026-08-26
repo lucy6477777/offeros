@@ -39,6 +39,14 @@ function sourceLabel(source: string): string {
   return SOURCE_LABEL[source] ?? source;
 }
 
+const CONFIDENCE_LABEL = {
+  high: "High confidence",
+  medium: "Medium confidence",
+  low: "Low confidence",
+} as const;
+
+const evidenceValue = (value: string) => (value === "" ? "empty" : value);
+
 export function FillReportCard({ reports }: { reports: FieldReport[] }) {
   if (reports.length === 0) return null;
 
@@ -65,20 +73,33 @@ export function FillReportCard({ reports }: { reports: FieldReport[] }) {
                     token or a long URL has no spaces to break at, and without
                     this it stretches the card past the column. */}
                 <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-                  <span className="font-medium">{r.label}</span>
-                  {r.source === "none" ? (
-                    r.value && <span className="text-muted-foreground">: {r.value}</span>
-                  ) : r.source === "resume-file" || r.source === "cover-letter-file" ? (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      — attached
-                      {r.value ? `: ${r.value}` : ""}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      — {sourceLabel(r.source)}
-                      {r.value ? `: ${r.value}` : ""}
+                  <span className="block">
+                    <span className="font-medium">{r.label}</span>
+                    {r.source === "none" ? (
+                      r.value && <span className="text-muted-foreground">: {r.value}</span>
+                    ) : r.source === "resume-file" || r.source === "cover-letter-file" ? (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        — attached
+                        {r.value ? `: ${r.value}` : ""}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        — {sourceLabel(r.source)}
+                        {r.value ? `: ${r.value}` : ""}
+                      </span>
+                    )}
+                  </span>
+                  {(r.confidence || r.before !== undefined || r.after !== undefined) && (
+                    <span className="block text-caption text-muted-foreground">
+                      {[
+                        r.confidence ? CONFIDENCE_LABEL[r.confidence] : null,
+                        r.before !== undefined ? `Before: ${evidenceValue(r.before)}` : null,
+                        r.after !== undefined ? `After: ${evidenceValue(r.after)}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                   )}
                 </span>

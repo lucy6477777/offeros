@@ -315,6 +315,10 @@ export type FieldTrace = {
   classifiedType: CanonicalField | "unknown";
   status: FillStatus;
   chosenValue: string;
+  /** The control's own value at scan time, before OfferOS attempts a write.
+   * Optional for compatibility with trace fixtures produced before evidence
+   * recording was added; explainFillPlan always supplies it. */
+  beforeValue?: string;
   source: FillItem["source"];
   /** Human-readable: WHY this field got this decision. */
   reason: string;
@@ -443,6 +447,7 @@ export function explainFillPlan(
       classifiedType: canonical ?? "unknown",
       status: item.status,
       chosenValue,
+      beforeValue: desc.currentValue ?? "",
       source: item.source,
       reason: deriveReason(desc, item, canonical, profile),
       // `null` meta is not a loss of fidelity: on a platform that exposes its

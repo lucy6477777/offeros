@@ -5,7 +5,12 @@ import {
   type FieldTrace,
   type FillItem,
 } from "@offeros/autofill";
-import type { FieldReport, FieldReportOutcome, FillTicket } from "../offeros-api";
+import type {
+  FieldReport,
+  FieldReportConfidence,
+  FieldReportOutcome,
+  FillTicket,
+} from "../offeros-api";
 import type { FillOutcome } from "./dom-fill";
 
 /**
@@ -26,6 +31,9 @@ export type FieldReportSource =
    *  level of confidence, and the user should be able to see which fields it
    *  touched. */
   | "ai-classified"
+  /** A suggestion produced by the server-side field analyst and inserted only
+   *  after the applicant clicks Apply. */
+  | "agent"
   | "cover-letter"
   | "resume-file"
   | "cover-letter-file"
@@ -229,6 +237,8 @@ export type WriteOutcome =
       value?: string;
       source?: FieldReportSource;
       reason?: string;
+      before?: string;
+      after?: string;
     };
 
 function normalize(w: WriteOutcome | undefined):
@@ -237,10 +247,32 @@ function normalize(w: WriteOutcome | undefined):
       value?: string;
       source?: FieldReportSource;
       reason?: string;
+      before?: string;
+      after?: string;
     }
   | undefined {
   if (w === undefined) return undefined;
   return typeof w === "string" ? { outcome: w } : w;
+}
+
+/**
+ * Confidence is provenance, not a pretend model probability.
+ *
+ * A verified deterministic/profile/page value is high; a model-assisted
+ * classification or applicant-applied suggestion is medium; an ungrounded or
+ * unsuccessful field is low. Exported so manual report updates in the panel
+ * use the exact same vocabulary as the batch report path.
+ */
+export function fieldReportConfidence(
+  source: FieldReportSource | string,
+  outcome: FieldReportOutcome,
+): FieldReportConfidence {
+  if (outcome !== "filled") return "low";
+  if (source === "ai-generated" || source === "ai-classified" || source === "agent") {
+    return "medium";
+  }
+  if (source === "none") return "low";
+  return "high";
 }
 
 /**
@@ -280,18 +312,28 @@ export function buildFieldReports(
 
     const unreported = !w && t.status === "fillable";
     const value = w?.value ?? (t.chosenValue || undefined);
+    const source = w?.source ?? traceSource(t);
     return {
       fieldId: t.fieldId,
       label: t.label,
       classifiedType: t.classifiedType,
       status: t.status,
       value: outcome === "filled" ? value : t.chosenValue || undefined,
-      source: w?.source ?? traceSource(t),
+      source,
       // The trace's reason ends "→ filled", written before anything was tried.
       // Repeating it over a field that was never written would be the report
       // telling the user it did something it did not do.
       reason: w?.reason ?? (unreported ? UNREPORTED_REASON : t.reason),
       outcome,
+      confidence: fieldReportConfidence(source, outcome),
+      ...(t.beforeValue !== undefined || w?.before !== undefined
+        ? { before: w?.before ?? t.beforeValue ?? "" }
+        : {}),
+      ...(w?.after !== undefined
+        ? { after: w.after }
+        : w?.source === "page"
+          ? { after: w.value ?? t.beforeValue ?? "" }
+          : {}),
       required: requiredIds.has(t.fieldId),
       page,
       questionKey: t.questionKey,

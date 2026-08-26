@@ -14,6 +14,7 @@ import {
   resolveFieldEl,
   highlight,
   type FillValue,
+  type FillOutcome,
 } from "../autofill/dom-fill";
 import { readFieldMeta } from "../autofill/field-meta-bridge";
 import { readWizard } from "../autofill/wizard-dom";
@@ -234,10 +235,43 @@ export function createEngine(doc: Document): Engine {
   };
 
   const fill = async (values: FillValue[]): Promise<FillResponse> => {
+    // Evidence is captured through the same scanner that describes the form,
+    // rather than by reading `.value` directly: custom ATS widgets expose
+    // their selected value through ARIA or wrapper state, and scanFields is
+    // already the canonical reader for those controls. Evidence collection is
+    // best-effort and must never prevent the actual fill from running.
+    const snapshot = async (): Promise<Map<string, string>> => {
+      try {
+        const result = await scan();
+        return result.ok
+          ? new Map(
+              result.descriptors.map((descriptor) => [
+                descriptor.fieldId,
+                descriptor.currentValue ?? "",
+              ]),
+            )
+          : new Map();
+      } catch {
+        return new Map();
+      }
+    };
+    const before = await snapshot();
     const { filled, outcomes } = await applyFillDetailed(edoc(), values);
+    const after = await snapshot();
+    const evidenced: [string, FillOutcome][] = [...outcomes].map(([fieldId, raw]) => {
+      const normalized = typeof raw === "string" ? { outcome: raw } : raw;
+      return [
+        fieldId,
+        {
+          ...normalized,
+          ...(before.has(fieldId) ? { before: before.get(fieldId)! } : {}),
+          ...(after.has(fieldId) ? { after: after.get(fieldId)! } : {}),
+        },
+      ];
+    });
     // Serialize the Map to entry tuples — message passing is JSON, not
     // structured clone, and a Map would arrive as {} on the panel side.
-    return { ok: true, filled, outcomes: [...outcomes] };
+    return { ok: true, filled, outcomes: evidenced };
   };
 
   const capture = (): CaptureJdResponse => {
@@ -267,6 +301,7 @@ export function createEngine(doc: Document): Engine {
     // the native control it hides. Both end up at the same input.
     const el = anchor ? findFileInputNear(anchor) : null;
     if (!el) return { ok: false };
+    const before = el.files?.[0]?.name ?? "";
     const bytes = base64ToBytes(bytesBase64);
     // base64ToBytes always allocates a fresh, exactly-sized buffer (never a
     // subview) — .buffer is safe to hand to File as-is. Cast only to satisfy
@@ -277,7 +312,7 @@ export function createEngine(doc: Document): Engine {
     });
     const ok = domAttachFile(el, file);
     if (ok) highlight(el);
-    return { ok };
+    return { ok, before, after: el.files?.[0]?.name ?? "" };
   };
 
   // Panel row → page glue: bring the field into view and flash the highlight

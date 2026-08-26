@@ -40,6 +40,22 @@ describe("FillReportCard", () => {
     expect(screen.getByText(/Jordan Rivera/)).toBeTruthy();
   });
 
+  it("shows confidence and the observed before/after values when the producer supplied evidence", () => {
+    render(
+      <FillReportCard
+        reports={[
+          {
+            ...reports[0]!,
+            confidence: "high",
+            before: "",
+            after: "Jordan Rivera",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("High confidence · Before: empty · After: Jordan Rivera")).toBeTruthy();
+  });
+
   it('a value the page already held reads "already on the page", never the raw token', () => {
     render(
       <FillReportCard

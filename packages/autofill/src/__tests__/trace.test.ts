@@ -74,6 +74,18 @@ describe("explainFillPlan", () => {
     expect(trace.map((t) => t.fieldId)).toEqual(plan.map((p) => p.fieldId));
   });
 
+  it("records the page's value before a fill attempt, including an explicit empty value", () => {
+    const { trace } = explainFillPlan(
+      [
+        d("filled", { label: "Email", currentValue: "already@example.com" }),
+        d("empty", { label: "Phone", currentValue: "" }),
+      ],
+      profile,
+    );
+    expect(trace.find((t) => t.fieldId === "filled")?.beforeValue).toBe("already@example.com");
+    expect(trace.find((t) => t.fieldId === "empty")?.beforeValue).toBe("");
+  });
+
   it("every trace has a non-empty reason", () => {
     const { trace } = explainFillPlan(descriptors, profile);
     for (const t of trace) {

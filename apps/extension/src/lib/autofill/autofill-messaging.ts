@@ -107,6 +107,9 @@ export interface EnginePageChangedMessage {
 
 export interface AttachFileResponse {
   ok: boolean;
+  /** File name observed on the control before/after the attach attempt. */
+  before?: string;
+  after?: string;
 }
 
 export interface ScrollToFieldResponse {

@@ -66,6 +66,36 @@ and always exits `0`, so a run only means something if a human reads the
 output and confirms every line looks right before opening the PR. Adding real
 assertions/exit codes is the prerequisite for ever wiring this into CI.
 
+For a change that spans the web workspace and the extension, build both apps
+and run the vertical-slice harness as well:
+
+```bash
+npm run build -w @offeros/extension
+cd apps/web && npm run build && cd ../..
+npm run e2e:vertical -w @offeros/extension
+```
+
+It starts the production web app on port 3000 with a temporary SQLite database,
+loads the built extension in Chromium, and exercises Greenhouse and Lever
+fixtures through profile lookup, JD capture, safe-field fill, fill reporting,
+and application tracking. The run has assertions, exits non-zero on failure,
+uses fake profile data, and verifies that the form was not submitted. Port 3000
+must be free before it starts.
+
+To check current public ATS markup without filling anything, pass one or more
+application URLs to the read-only live probe:
+
+```bash
+npm run probe:ats-live -w @offeros/extension -- \
+  https://job-boards.greenhouse.io/example/jobs/123 \
+  https://jobs.lever.co/example/role-id/apply
+```
+
+The probe scans fields and captures the JD through the built extension, then
+asserts that every form value is unchanged. It never sends a fill or submit
+message. Because public postings disappear and their markup changes, this is a
+manual compatibility check rather than a stable CI gate.
+
 ## Commits
 
 Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`,

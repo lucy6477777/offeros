@@ -1077,7 +1077,18 @@ export const UNSUPPORTED_CONTROL_REASON = "OfferOS can't operate this control â€
  * too, for a write that landed by a route the user should know about (a
  * dropdown that never opened and was typed into instead).
  */
-export type FillOutcome = "filled" | "failed" | { outcome: "filled" | "failed"; reason: string };
+export type FillOutcome =
+  | "filled"
+  | "failed"
+  | {
+      outcome: "filled" | "failed";
+      reason?: string;
+      /** Actual control value immediately before/after this write. These are
+       * added at the engine boundary, where a fresh scan can read custom
+       * widgets as well as native inputs. */
+      before?: string;
+      after?: string;
+    };
 
 /**
  * Did the page keep what we typed?

@@ -27,6 +27,18 @@ export const fillHandoffSchema = z.object({
  */
 export const FIELD_REPORT_OUTCOMES = ["filled", "skipped", "needs-user", "failed"] as const;
 
+/**
+ * How strongly the recorded source supports the value/mapping.
+ *
+ * This is deliberately categorical rather than a made-up percentage. `high`
+ * means a deterministic profile/answer-bank/page source, `medium` means a
+ * model helped classify or draft it and the applicant still initiated the
+ * write, and `low` means OfferOS could not ground a value and handed the field
+ * back. Optional on the report so rows written by older extensions continue
+ * to parse without a data migration.
+ */
+export const FIELD_REPORT_CONFIDENCE = ["high", "medium", "low"] as const;
+
 export const fieldReportSchema = z.object({
   fieldId: z.string().min(1),
   label: z.string(),
@@ -36,6 +48,14 @@ export const fieldReportSchema = z.object({
   source: z.string(), // "personal" | "answer-bank" | "skills" | "ai-generated" | "ai-classified" | "cover-letter" | "resume-file" | "cover-letter-file" | "page" | "none"
   reason: z.string(),
   outcome: z.enum(FIELD_REPORT_OUTCOMES),
+  confidence: z.enum(FIELD_REPORT_CONFIDENCE).optional(),
+  /** Page value immediately before the attempted write. Empty string is
+   * meaningful evidence; absence means the older producer did not record it. */
+  before: z.string().optional(),
+  /** Page value observed after the attempted write. Empty string means the
+   * page cleared/rejected the value; absence means no write was attempted or
+   * the older producer did not record it. */
+  after: z.string().optional(),
   required: z.boolean(),
   page: z.string().optional(),
   /**
@@ -55,6 +75,7 @@ export type FillHandoffStatus = (typeof FILL_HANDOFF_STATUSES)[number];
 export type FieldReport = z.infer<typeof fieldReportSchema>;
 /** The outcome vocabulary, as a type — both apps switch on it. */
 export type FieldReportOutcome = (typeof FIELD_REPORT_OUTCOMES)[number];
+export type FieldReportConfidence = (typeof FIELD_REPORT_CONFIDENCE)[number];
 
 function reportKey(report: FieldReport): string {
   return `${report.page ?? ""} ${report.fieldId}`;

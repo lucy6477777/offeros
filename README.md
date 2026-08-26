@@ -249,6 +249,7 @@ npm run dev         # extension dev build with HMR (separate browser)
 npm run typecheck   # web + packages + extension
 npm test            # root Vitest (packages + apps/web) + extension Vitest
 npm run e2e -w @offeros/extension   # headed E2E: real Chromium, built extension
+npm run e2e:vertical -w @offeros/extension # headed web → extension → ATS E2E
 ```
 
 Node 24+. An npm-workspaces monorepo: `apps/web` (the product), `apps/extension`

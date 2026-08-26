@@ -3,6 +3,7 @@ import type {
   AnswerEntry as CoreAnswerEntry,
   Application,
   FieldReport as CoreFieldReport,
+  FieldReportConfidence as CoreConfidence,
   FieldReportOutcome as CoreOutcome,
   FillHandoff,
   FitAnalysis,
@@ -68,6 +69,7 @@ export type ApplicationSummary = Pick<Application, "id"> & {
 export type AnswerEntry = CoreAnswerEntry;
 
 export type FieldReportOutcome = CoreOutcome;
+export type FieldReportConfidence = CoreConfidence;
 
 /** The per-field record the panel sends back to the workspace. */
 export type FieldReport = CoreFieldReport;

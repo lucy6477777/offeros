@@ -48,6 +48,7 @@ import {
   NO_FILE_REASON,
   RENDER_FAILED_REASON,
   FILE_KIND_SOURCE,
+  fieldReportConfidence,
   handoverList,
   outcomeOf,
   type WriteOutcome,
@@ -67,6 +68,7 @@ import { describeWizard } from "@offeros/autofill";
 import { stablePageId } from "../lib/autofill/page-id";
 import { CoverageBar } from "./panel/coverage-bar";
 import { FieldGroup } from "./panel/field-group";
+import type { FieldDisplayState } from "./panel/status-icon";
 import { ArtifactCard } from "./panel/artifact-card";
 import { useArtifactLane } from "./panel/use-artifact-lane";
 import { AddJobCard } from "./panel/add-job-card";
@@ -570,6 +572,19 @@ export function FillPanel({
     return r.outcomes?.some(([id, o]) => id === fieldId && outcomeOf(o) === "filled") ?? false;
   };
 
+  /** The verified write plus the DOM evidence returned by the content script.
+   * Kept separate from writeOne so existing boolean call sites stay simple;
+   * suggestion/report paths use this richer form when they persist evidence. */
+  const writeOneWithEvidence = async (
+    fieldId: string,
+    value: string,
+  ): Promise<WriteOutcome | undefined> => {
+    const r = await fill([{ fieldId, value }]);
+    const raw = r.outcomes?.find(([id]) => id === fieldId)?.[1];
+    if (!raw || outcomeOf(raw) !== "filled") return undefined;
+    return typeof raw === "string" ? raw : raw;
+  };
+
   // Fetch bytes for one OfferOS-managed file kind, then drive the content-script
   // attach + DOM verify over the messaging boundary. A 404 (nothing stored, or a
   // stale attachResume preference), a 400 (the artifact exists but failed to
@@ -595,6 +610,8 @@ export function FillPanel({
         value: fetched.fileName,
         source,
         reason: "Already attached — left as it was.",
+        before: fetched.fileName,
+        after: fetched.fileName,
       };
     }
     // The content-script call crosses the messaging boundary (tabs.sendMessage) —
@@ -612,7 +629,13 @@ export function FillPanel({
       return { outcome: "needs-user", reason: CUSTOM_UPLOADER_REASON, source };
     }
     if (res.ok) {
-      return { outcome: "filled", value: fetched.fileName, source };
+      return {
+        outcome: "filled",
+        value: fetched.fileName,
+        source,
+        before: res.before ?? attachedFileName(fieldId),
+        after: res.after ?? fetched.fileName,
+      };
     }
     return { outcome: "needs-user", reason: CUSTOM_UPLOADER_REASON, source };
   };
@@ -657,6 +680,9 @@ export function FillPanel({
           outcome: "filled",
           value: fetched.fileName,
           source: FILE_KIND_SOURCE[kind],
+          confidence: "high",
+          before: r.after ?? r.before ?? "",
+          after: fetched.fileName,
         });
       }
     }
@@ -718,7 +744,13 @@ export function FillPanel({
         if (state === "agrees") {
           // Answered, and with what we would have written. Nothing to do and
           // nothing to ask about.
-          writes.set(item.fieldId, { outcome: "filled", value: held, source: "page" });
+          writes.set(item.fieldId, {
+            outcome: "filled",
+            value: held,
+            source: "page",
+            before: held,
+            after: held,
+          });
         } else if (state === "differs") {
           const ours = ourValueOf(item);
           differing.push({
@@ -731,6 +763,8 @@ export function FillPanel({
             outcome: "needs-user",
             source: "page",
             reason: `The page already has "${held}" here and your profile says "${ours}" — left as it is, for you to decide.`,
+            before: held,
+            after: held,
           });
         }
       }
@@ -783,7 +817,13 @@ export function FillPanel({
             i.status === "needs-answer" && isCoverLetterField(i.label) && isTextTarget(i.fieldId),
         )) {
           if (await writeOne(cf.fieldId, coverText)) {
-            writes.set(cf.fieldId, { outcome: "filled", value: coverText, source: "cover-letter" });
+            writes.set(cf.fieldId, {
+              outcome: "filled",
+              value: coverText,
+              source: "cover-letter",
+              before: descriptorById.get(cf.fieldId)?.currentValue ?? "",
+              after: coverText,
+            });
             markWritten(cf.fieldId, "Cover letter");
           }
           // a failed cover-letter write stays unreported here → needs-user.
@@ -821,6 +861,8 @@ export function FillPanel({
             outcome: "filled",
             value: ans.value.answer,
             source: "ai-generated",
+            before: descriptorById.get(q.fieldId)?.currentValue ?? "",
+            after: ans.value.answer,
           });
           markWritten(q.fieldId, ans.value.answer);
           collected.push({ fieldId: q.fieldId, label: q.label, answer: ans.value.answer });
@@ -862,6 +904,8 @@ export function FillPanel({
             outcome: "filled",
             value: ans.value.answer,
             source: "ai-generated",
+            before: descriptorById.get(g.fieldId)?.currentValue ?? "",
+            after: ans.value.answer,
           });
           markWritten(g.fieldId, ans.value.answer);
           collected.push({ fieldId: g.fieldId, label: g.label, answer: ans.value.answer, options });
@@ -1034,6 +1078,8 @@ export function FillPanel({
             value: answer,
             outcome: "filled",
             source: "ai-generated",
+            confidence: "medium",
+            after: answer,
           });
         }
       }
@@ -1069,6 +1115,8 @@ export function FillPanel({
             value: entry.answer,
             outcome: "filled",
             source: "ai-generated",
+            confidence: "medium",
+            after: entry.answer,
           });
         }
       }
@@ -1534,6 +1582,15 @@ export function FillPanel({
   // render time the reasons match the rows being shown.
   const reasonFor = (fieldId: string) =>
     traceRef.current.find((t) => t.fieldId === fieldId)?.reason || undefined;
+  const displayStateFor = (fieldId: string): FieldDisplayState => {
+    if (writtenValueFor(fieldId) !== undefined) return "filled";
+    if (suggestions.get(fieldId)?.value) return "suggestion";
+    const report = reportsRef.current.get(`${pageIdRef.current ?? ""} ${fieldId}`);
+    if (report?.outcome === "failed") return "failed";
+    if (report?.outcome === "needs-user" || report?.outcome === "skipped") return "manual";
+    const item = plan.find((candidate) => candidate.fieldId === fieldId);
+    return item?.status === "fillable" ? "ready" : "manual";
+  };
   const jumpToField = (fieldId: string) => {
     void scrollToField?.(fieldId)?.catch?.(() => {});
   };
@@ -1662,6 +1719,8 @@ export function FillPanel({
         reportsRef.current.set(k, {
           ...r,
           outcome: "failed",
+          confidence: "low",
+          after: hit.nowShows,
           reason:
             hit.nowShows === ""
               ? `The page cleared this after it was filled — it may have run its own résumé parse.`
@@ -1690,6 +1749,8 @@ export function FillPanel({
             ...r,
             outcome: "filled",
             value: hit.wrote,
+            confidence: fieldReportConfidence(r.source, "filled"),
+            after: hit.wrote,
             reason: "Filled again after the page changed it.",
           });
         }
@@ -1702,10 +1763,12 @@ export function FillPanel({
     const b = bundleRef.current;
     const suggestion = suggestions.get(fieldId);
     if (!b || !suggestion?.value) return;
-    if (!(await writeOne(fieldId, suggestion.value))) {
+    const wrote = await writeOneWithEvidence(fieldId, suggestion.value);
+    if (!wrote) {
       setAiError("The page didn't take that value — copy it in yourself.");
       return;
     }
+    const evidence: { before?: string; after?: string } = typeof wrote === "string" ? {} : wrote;
     markWritten(fieldId, suggestion.value);
     let updated = false;
     for (const [k, r] of reportsRef.current) {
@@ -1716,6 +1779,15 @@ export function FillPanel({
           outcome: "filled",
           source: "agent",
           reason: suggestion.reason,
+          confidence: fieldReportConfidence("agent", "filled"),
+          before:
+            evidence.before ??
+            (scanResult?.ok
+              ? scanResult.descriptors.find((descriptor) => descriptor.fieldId === fieldId)
+                  ?.currentValue
+              : undefined) ??
+            "",
+          after: evidence.after ?? suggestion.value,
         });
         updated = true;
       }
@@ -1736,6 +1808,15 @@ export function FillPanel({
         source: "agent",
         reason: suggestion.reason,
         outcome: "filled",
+        confidence: fieldReportConfidence("agent", "filled"),
+        before:
+          evidence.before ??
+          (scanResult?.ok
+            ? scanResult.descriptors.find((descriptor) => descriptor.fieldId === fieldId)
+                ?.currentValue
+            : undefined) ??
+          "",
+        after: evidence.after ?? suggestion.value,
         required: item?.required === true,
         ...(pageIdRef.current ? { page: pageIdRef.current } : {}),
         ...(t?.questionKey ? { questionKey: t.questionKey } : {}),
@@ -1775,6 +1856,9 @@ export function FillPanel({
           outcome: "filled",
           source: t?.source === "answerBank" ? "answer-bank" : "personal",
           reason: `Replaced the page's "${conflict.pageValue}" with your saved answer, at your request.`,
+          confidence: "high",
+          before: conflict.pageValue,
+          after: conflict.ourValue,
         });
       }
     }
@@ -2376,6 +2460,7 @@ export function FillPanel({
           reasonFor={reasonFor}
           onJump={jumpToField}
           writtenValue={writtenValueFor}
+          stateFor={displayStateFor}
           revealKey={pageSigRef.current ?? undefined}
         />
         <FieldGroup
@@ -2384,6 +2469,7 @@ export function FillPanel({
           reasonFor={reasonFor}
           onJump={jumpToField}
           writtenValue={writtenValueFor}
+          stateFor={displayStateFor}
           revealKey={pageSigRef.current ?? undefined}
         />
         {/* A multi-page application is not finished because this page is.

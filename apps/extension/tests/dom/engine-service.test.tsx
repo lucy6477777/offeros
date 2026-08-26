@@ -146,7 +146,7 @@ describe("engine FILL handler", () => {
 
     expect(res.filled).toBe(1);
     expect(Array.isArray(res.outcomes)).toBe(true);
-    expect(res.outcomes).toEqual([[emailId, "filled"]]);
+    expect(res.outcomes).toEqual([[emailId, { outcome: "filled", before: "", after: "a@b.com" }]]);
     expect(document.querySelector<HTMLInputElement>('input[name="email"]')!.value).toBe("a@b.com");
   });
 });
@@ -179,7 +179,7 @@ describe("engine ATTACH_FILE handler", () => {
       bytesBase64: bytesToBase64(bytes),
     })) as AttachFileResponse;
 
-    expect(res.ok).toBe(true);
+    expect(res).toMatchObject({ ok: true, before: "", after: "Jordan_Rivera_Resume.pdf" });
     const input = document.querySelector<HTMLInputElement>('input[name="resume"]')!;
     expect(input.files).toHaveLength(1);
     expect(input.files?.[0]?.name).toBe("Jordan_Rivera_Resume.pdf");

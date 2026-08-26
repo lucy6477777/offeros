@@ -48,11 +48,47 @@ describe("fieldReportSchema", () => {
       source: "personal",
       reason: "matched personal.firstName",
       outcome: "filled",
+      confidence: "high",
+      before: "",
+      after: "Jordan",
       required: true,
       page: "page-1",
     });
     expect(report.outcome).toBe("filled");
+    expect(report).toMatchObject({ confidence: "high", before: "", after: "Jordan" });
     expect(FIELD_REPORT_OUTCOMES).toEqual(["filled", "skipped", "needs-user", "failed"]);
+  });
+
+  it("keeps evidence optional so reports from older extensions still parse", () => {
+    const report = fieldReportSchema.parse({
+      fieldId: "old-f1",
+      label: "Email",
+      classifiedType: "email",
+      status: "filled",
+      value: "a@b.c",
+      source: "personal",
+      reason: "matched personal.email",
+      outcome: "filled",
+      required: true,
+    });
+    expect(report.confidence).toBeUndefined();
+    expect(report.before).toBeUndefined();
+    expect(report.after).toBeUndefined();
+  });
+
+  it("rejects an invented confidence label", () => {
+    const bad = fieldReportSchema.safeParse({
+      fieldId: "f1",
+      label: "Email",
+      classifiedType: "email",
+      status: "filled",
+      source: "personal",
+      reason: "matched personal.email",
+      outcome: "filled",
+      confidence: "certain",
+      required: true,
+    });
+    expect(bad.success).toBe(false);
   });
 
   it("round-trips the file-attach sources (resume-file, cover-letter-file) — additive, old reports unaffected", () => {
