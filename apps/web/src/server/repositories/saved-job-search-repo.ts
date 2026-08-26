@@ -15,6 +15,7 @@ function toSavedSearch(row: Row): SavedJobSearch {
     name: row.name,
     criteria: row.criteria,
     sources: row.sources,
+    match: row.matchPreferences,
   });
   return {
     id: row.id,
@@ -49,7 +50,10 @@ export function createSavedJobSearch(
   const now = options.now ?? Date.now();
   const row: Row = {
     id: options.id ?? randomUUID(),
-    ...definition,
+    name: definition.name,
+    criteria: definition.criteria,
+    sources: definition.sources,
+    matchPreferences: definition.match,
     lastRunId: null,
     lastRunAt: null,
     createdAt: now,
@@ -71,10 +75,23 @@ export function updateSavedJobSearch(
   if (!existing) return null;
   const definition = savedJobSearchDefinitionSchema.parse(input);
   db.update(savedJobSearches)
-    .set({ ...definition, updatedAt: now })
+    .set({
+      name: definition.name,
+      criteria: definition.criteria,
+      sources: definition.sources,
+      matchPreferences: definition.match,
+      updatedAt: now,
+    })
     .where(eq(savedJobSearches.id, id))
     .run();
-  return toSavedSearch({ ...existing, ...definition, updatedAt: now });
+  return toSavedSearch({
+    ...existing,
+    name: definition.name,
+    criteria: definition.criteria,
+    sources: definition.sources,
+    matchPreferences: definition.match,
+    updatedAt: now,
+  });
 }
 
 export function deleteSavedJobSearch(db: Db, id: string): boolean {

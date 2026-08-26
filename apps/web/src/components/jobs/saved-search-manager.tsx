@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Pencil, Play, Plus, Trash2, X } from "lucide-react";
-import { hasConfiguredJobSource } from "@offeros/job-search";
+import { ListFilter, Pencil, Play, Plus, Trash2, X } from "lucide-react";
+import { hasConfiguredJobSource, JOB_SENIORITY_LEVELS } from "@offeros/job-search";
 import type {
   JobLocationScope,
+  JobSeniority,
   SavedJobSearch,
   SavedJobSearchDefinition,
 } from "@offeros/job-search";
@@ -29,6 +30,11 @@ const EMPTY_DEFINITION: SavedJobSearchDefinition = {
     maxResults: 100,
   },
   sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
+  match: {
+    prioritySkills: [],
+    excludedKeywords: [],
+    excludedCompanies: [],
+  },
 };
 
 function cloneDefinition(search?: SavedJobSearch): SavedJobSearchDefinition {
@@ -36,6 +42,12 @@ function cloneDefinition(search?: SavedJobSearch): SavedJobSearchDefinition {
   return {
     name: search.name,
     criteria: { ...search.criteria },
+    match: {
+      prioritySkills: [...search.match.prioritySkills],
+      excludedKeywords: [...search.match.excludedKeywords],
+      excludedCompanies: [...search.match.excludedCompanies],
+      ...(search.match.maximumSeniority ? { maximumSeniority: search.match.maximumSeniority } : {}),
+    },
     sources: {
       freehire: search.sources.freehire,
       greenhouse: search.sources.greenhouse.map((board) => ({ ...board })),
@@ -43,6 +55,27 @@ function cloneDefinition(search?: SavedJobSearch): SavedJobSearchDefinition {
       ashby: search.sources.ashby.map((board) => ({ ...board })),
     },
   };
+}
+
+function draftList(value: string): string[] {
+  return value.split(",").map((item) => item.trimStart());
+}
+
+function cleanList(values: string[]): string[] {
+  return values.map((item) => item.trim()).filter(Boolean);
+}
+
+function matchSummary(search: SavedJobSearch): string[] {
+  const labels: string[] = [];
+  if (search.match.prioritySkills.length > 0) {
+    labels.push(`${search.match.prioritySkills.length} priority skills`);
+  }
+  const exclusions = search.match.excludedKeywords.length + search.match.excludedCompanies.length;
+  if (exclusions > 0) labels.push(`${exclusions} exclusions`);
+  if (search.match.maximumSeniority) {
+    labels.push(`Up to ${search.match.maximumSeniority}`);
+  }
+  return labels;
 }
 
 function sourceSummary(search: SavedJobSearch): string[] {
@@ -63,9 +96,13 @@ function removeAt<T>(values: T[], index: number): T[] {
 export function SavedSearchManager({
   initialSavedSearches,
   onRunComplete,
+  activeSearchId,
+  onActivate,
 }: {
   initialSavedSearches: SavedJobSearch[];
   onRunComplete: (result: SavedJobSearchRunResult) => Promise<void>;
+  activeSearchId: string | null;
+  onActivate: (search: SavedJobSearch | null) => void;
 }) {
   const [searches, setSearches] = useState(initialSavedSearches);
   const [draft, setDraft] = useState<SavedJobSearchDefinition | null>(null);
@@ -104,10 +141,20 @@ export function SavedSearchManager({
     setBusy({ id: editingId ?? "create", action: "save" });
     setError(null);
     try {
+      const definition: SavedJobSearchDefinition = {
+        ...draft,
+        match: {
+          ...draft.match,
+          prioritySkills: cleanList(draft.match.prioritySkills),
+          excludedKeywords: cleanList(draft.match.excludedKeywords),
+          excludedCompanies: cleanList(draft.match.excludedCompanies),
+        },
+      };
       const saved = editingId
-        ? await api.jobs.savedSearches.update(editingId, draft)
-        : await api.jobs.savedSearches.create(draft);
+        ? await api.jobs.savedSearches.update(editingId, definition)
+        : await api.jobs.savedSearches.create(definition);
       setSearches((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      onActivate(saved);
       closeEditor();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save this search.");
@@ -123,6 +170,7 @@ export function SavedSearchManager({
     try {
       await api.jobs.savedSearches.remove(search.id);
       setSearches((current) => current.filter((item) => item.id !== search.id));
+      if (activeSearchId === search.id) onActivate(null);
       if (editingId === search.id) closeEditor();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete this search.");
@@ -141,6 +189,7 @@ export function SavedSearchManager({
         result.savedSearch,
         ...current.filter((item) => item.id !== result.savedSearch.id),
       ]);
+      onActivate(result.savedSearch);
       await onRunComplete(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not run this search.");
@@ -254,6 +303,89 @@ export function SavedSearchManager({
               Include jobs whose location is unclear
             </label>
           </div>
+
+          <fieldset className="mt-5 border-t border-border pt-4">
+            <legend className="text-body font-semibold text-foreground">Shortlist rules</legend>
+            <p className="mt-1 text-caption text-muted-foreground">
+              Local, deterministic evidence only. Missing JD facts stay reviewable instead of being
+              silently rejected.
+            </p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
+                  Priority skills
+                </span>
+                <input
+                  value={draft.match.prioritySkills.join(", ")}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      match: { ...draft.match, prioritySkills: draftList(event.target.value) },
+                    })
+                  }
+                  placeholder="TypeScript, Python, PostgreSQL"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body text-foreground outline-none focus:ring-1 focus:ring-ring"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
+                  Maximum title seniority
+                </span>
+                <select
+                  value={draft.match.maximumSeniority ?? ""}
+                  onChange={(event) => {
+                    const { maximumSeniority: _maximumSeniority, ...rest } = draft.match;
+                    setDraft({
+                      ...draft,
+                      match: event.target.value
+                        ? { ...rest, maximumSeniority: event.target.value as JobSeniority }
+                        : rest,
+                    });
+                  }}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body capitalize text-foreground outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">No ceiling</option>
+                  {JOB_SENIORITY_LEVELS.map((level) => (
+                    <option key={level} value={level}>
+                      {level}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
+                  Excluded keywords
+                </span>
+                <input
+                  value={draft.match.excludedKeywords.join(", ")}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      match: { ...draft.match, excludedKeywords: draftList(event.target.value) },
+                    })
+                  }
+                  placeholder="contract, unpaid, clearance"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body text-foreground outline-none focus:ring-1 focus:ring-ring"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
+                  Excluded companies
+                </span>
+                <input
+                  value={draft.match.excludedCompanies.join(", ")}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      match: { ...draft.match, excludedCompanies: draftList(event.target.value) },
+                    })
+                  }
+                  placeholder="Company A, Company B"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body text-foreground outline-none focus:ring-1 focus:ring-ring"
+                />
+              </label>
+            </div>
+          </fieldset>
 
           <fieldset className="mt-5 border-t border-border pt-4">
             <legend className="text-body font-semibold text-foreground">Sources to watch</legend>
@@ -536,7 +668,14 @@ export function SavedSearchManager({
           </p>
         ) : (
           searches.map((search) => (
-            <article key={search.id} className="rounded-xl border border-border bg-background p-4">
+            <article
+              key={search.id}
+              className={
+                activeSearchId === search.id
+                  ? "rounded-xl border border-primary/45 bg-primary/5 p-4"
+                  : "rounded-xl border border-border bg-background p-4"
+              }
+            >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-body-lg font-semibold text-foreground">{search.name}</h3>
@@ -552,6 +691,19 @@ export function SavedSearchManager({
                         {source}
                       </span>
                     ))}
+                    {matchSummary(search).map((rule) => (
+                      <span
+                        key={rule}
+                        className="rounded-full bg-primary/10 px-2.5 py-1 text-caption text-primary"
+                      >
+                        {rule}
+                      </span>
+                    ))}
+                    {activeSearchId === search.id && (
+                      <span className="rounded-full bg-success/15 px-2.5 py-1 text-caption font-medium text-success">
+                        Shortlist active
+                      </span>
+                    )}
                   </div>
                   <p className="mt-3 text-caption text-muted-foreground">
                     Last run:{" "}
@@ -559,6 +711,15 @@ export function SavedSearchManager({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onActivate(search)}
+                    disabled={Boolean(busy)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-2 text-caption font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+                  >
+                    <ListFilter aria-hidden className="size-3.5" />
+                    View shortlist
+                  </button>
                   <button
                     type="button"
                     onClick={() => void run(search)}

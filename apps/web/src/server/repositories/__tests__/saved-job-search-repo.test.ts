@@ -35,6 +35,12 @@ const definition = {
     lever: [],
     ashby: [],
   },
+  match: {
+    prioritySkills: ["TypeScript", "PostgreSQL"],
+    excludedKeywords: ["contract"],
+    excludedCompanies: ["Blocked Labs"],
+    maximumSeniority: "senior" as const,
+  },
 };
 
 describe("saved-job-search repository", () => {
@@ -60,6 +66,7 @@ describe("saved-job-search repository", () => {
     );
     expect(updated).toMatchObject({ name: "US platform roles", updatedAt: 20 });
     expect(updated?.sources.ashby).toEqual([{ name: "beta", company: "Beta" }]);
+    expect(updated?.match.prioritySkills).toEqual(["TypeScript", "PostgreSQL"]);
 
     expect(deleteSavedJobSearch(db, created.id)).toBe(true);
     expect(deleteSavedJobSearch(db, created.id)).toBe(false);

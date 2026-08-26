@@ -1,6 +1,7 @@
 export * from "./types";
 export * from "./config";
 export * from "./normalize";
+export * from "./match";
 export * from "./capture";
 export * from "./dedupe";
 export * from "./search";

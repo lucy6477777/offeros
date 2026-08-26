@@ -13,6 +13,7 @@ import type {
 } from "@offeros/core";
 import type {
   JobPosting,
+  JobMatchPreferences,
   JobSearchCriteria,
   JobSearchSources,
   JobSourceKind,
@@ -133,6 +134,9 @@ export const savedJobSearches = sqliteTable("saved_job_searches", {
   name: text("name").notNull(),
   criteria: text("criteria", { mode: "json" }).$type<JobSearchCriteria>().notNull(),
   sources: text("sources", { mode: "json" }).$type<JobSearchSources>().notNull(),
+  matchPreferences: text("match_preferences", { mode: "json" })
+    .$type<JobMatchPreferences>()
+    .notNull(),
   lastRunId: text("last_run_id"),
   lastRunAt: integer("last_run_at"),
   createdAt: integer("created_at").notNull(),

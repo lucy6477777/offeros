@@ -85,11 +85,19 @@ explicit “Search public jobs” action runs freehire and then re-reads the
 persisted catalogue and source health, so the UI never presents an unpersisted
 network response as local state.
 
-Current boundary: provider configuration is supplied per search request. The
-hosted freehire endpoint is fixed in the Web route to avoid arbitrary remote URL
-fetches; library callers may explicitly configure an HTTPS self-hosted instance.
-Saved searches, scheduled scans, and a user-facing ATS watchlist/configuration
-flow remain later Phase 2 slices.
+Saved Searches persist the keywords, US/Remote guard, and company Greenhouse,
+Lever, and Ashby boards as one repeatable watchlist. They also own deterministic
+shortlist rules: priority skills, excluded keywords and companies, and a title
+seniority ceiling. `assessJobMatch` applies explicit blockers first, then ranks
+the surviving jobs by visible role and skill evidence. Missing descriptions,
+status, or title seniority remain review reasons; they never become silent
+rejections. The score is derived on read and is not persisted as if it were a
+new fact.
+
+Current boundary: the hosted freehire endpoint is fixed in the Web route to
+avoid arbitrary remote URL fetches; library callers may explicitly configure an
+HTTPS self-hosted instance. Scheduled scans and structured work-authorization /
+sponsorship matching remain later slices.
 
 To check current public payloads without writing anywhere:
 

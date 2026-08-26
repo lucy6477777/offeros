@@ -188,6 +188,12 @@ describe("saved job search routes", () => {
         maxResults: 100,
       },
       sources: SOURCES,
+      match: {
+        prioritySkills: ["TypeScript", "PostgreSQL"],
+        excludedKeywords: ["contract"],
+        excludedCompanies: ["Blocked Labs"],
+        maximumSeniority: "senior",
+      },
     };
     const createdResponse = await savedSearchesRoute.POST(
       new Request("http://localhost/api/v1/jobs/saved-searches", {
@@ -197,7 +203,11 @@ describe("saved job search routes", () => {
     );
     const created = (await createdResponse.json()).result;
     expect(createdResponse.status).toBe(200);
-    expect(created).toMatchObject({ name: definition.name, criteria: definition.criteria });
+    expect(created).toMatchObject({
+      name: definition.name,
+      criteria: definition.criteria,
+      match: definition.match,
+    });
 
     const editedResponse = await savedSearchRoute.PUT(
       new Request(`http://localhost/api/v1/jobs/saved-searches/${created.id}`, {
@@ -206,7 +216,10 @@ describe("saved job search routes", () => {
       }),
       { params: Promise.resolve({ id: created.id }) },
     );
-    expect((await editedResponse.json()).result.name).toBe("US engineering roles");
+    expect((await editedResponse.json()).result).toMatchObject({
+      name: "US engineering roles",
+      match: definition.match,
+    });
 
     const runResponse = await savedSearchRunRoute.POST(
       new Request(`http://localhost/api/v1/jobs/saved-searches/${created.id}/run`, {

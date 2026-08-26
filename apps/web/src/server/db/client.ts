@@ -145,6 +145,9 @@ const ADDED_COLUMNS: ReadonlyArray<readonly [table: string, column: string, ddl:
   // Where a description came from. Null on every row that predates it, which
   // reads as "unknown" — the truth, rather than a guessed provenance.
   ["applications", "jd_source", "jd_source TEXT"],
+  // Deterministic shortlist rules belong to a saved search. Existing searches
+  // start with no hard blockers or skill preferences.
+  ["saved_job_searches", "match_preferences", "match_preferences TEXT NOT NULL DEFAULT '{}'"],
 ];
 
 /** SQLite errors on `ALTER TABLE ADD COLUMN` if the column already exists, so

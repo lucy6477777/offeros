@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { jobSearchCriteriaSchema } from "./types";
+import { jobMatchPreferencesSchema } from "./match";
 import type { GreenhouseBoard } from "./providers/greenhouse";
 import type { LeverSite } from "./providers/lever";
 import type { AshbyBoard } from "./providers/ashby";
@@ -56,6 +57,7 @@ export const savedJobSearchDefinitionSchema = z
     name: z.string().trim().min(1).max(100),
     criteria: savedJobSearchCriteriaSchema,
     sources: jobSearchSourcesSchema,
+    match: jobMatchPreferencesSchema.default({}),
   })
   .strict()
   .superRefine((value, ctx) => {

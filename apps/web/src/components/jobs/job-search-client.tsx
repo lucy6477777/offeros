@@ -3,8 +3,10 @@
 import { useMemo, useState } from "react";
 import { Clock, Database, ExternalLink, MapPin, Search } from "lucide-react";
 import {
+  assessJobMatch,
   matchesLocationCriteria,
   matchesQuery,
+  type JobMatchAssessment,
   type JobLocationScope,
   type JobSearchCriteria,
   type SavedJobSearch,
@@ -61,7 +63,20 @@ function statusLabel(status: JobSearchRunSummary["status"]): string {
   return "Failed";
 }
 
-function JobCard({ entry }: { entry: JobCatalogueEntry }) {
+function verdictLabel(verdict: JobMatchAssessment["verdict"]): string {
+  if (verdict === "strong") return "Strong evidence";
+  if (verdict === "possible") return "Possible match";
+  if (verdict === "review") return "Needs review";
+  return "Excluded";
+}
+
+function JobCard({
+  entry,
+  assessment,
+}: {
+  entry: JobCatalogueEntry;
+  assessment?: JobMatchAssessment;
+}) {
   const { posting } = entry;
   const providers = [...new Set(posting.sources.map((source) => source.provider))];
 
@@ -110,6 +125,47 @@ function JobCard({ entry }: { entry: JobCatalogueEntry }) {
           <ExternalLink aria-hidden className="size-3.5" />
         </a>
       </div>
+
+      {assessment && (
+        <div
+          className={cn(
+            "mt-4 rounded-xl border p-3 text-caption",
+            assessment.verdict === "skip" &&
+              "border-destructive/25 bg-destructive/5 text-foreground",
+            assessment.verdict === "review" && "border-warn/30 bg-warn-bg text-foreground",
+            assessment.verdict === "possible" && "border-border bg-muted/45 text-foreground",
+            assessment.verdict === "strong" && "border-success/25 bg-success/10 text-foreground",
+          )}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-semibold">{verdictLabel(assessment.verdict)}</span>
+            <span className="text-muted-foreground">
+              {assessment.score}/100 evidence score · deterministic
+            </span>
+          </div>
+          {assessment.blockers.length > 0 && (
+            <ul className="mt-2 space-y-1 text-destructive">
+              {assessment.blockers.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          )}
+          {assessment.matchedSkills.length > 0 && (
+            <p className="mt-2">
+              <span className="font-medium">Skills found:</span>{" "}
+              {assessment.matchedSkills.join(", ")}
+            </p>
+          )}
+          {assessment.missingSkills.length > 0 && (
+            <p className="mt-1 text-muted-foreground">
+              Not found in available JD text: {assessment.missingSkills.join(", ")}
+            </p>
+          )}
+          {assessment.reviewReasons.length > 0 && (
+            <p className="mt-1 text-muted-foreground">{assessment.reviewReasons.join(" ")}</p>
+          )}
+        </div>
+      )}
 
       <dl className="mt-5 grid gap-4 border-t border-border pt-4 text-caption sm:grid-cols-3">
         <div>
@@ -182,12 +238,21 @@ export function JobSearchClient({
   initialSourceHealth: JobSourceHealthSummary[];
   initialSavedSearches: SavedJobSearch[];
 }) {
+  const initialActiveSearch = initialSavedSearches[0] ?? null;
   const [jobs, setJobs] = useState(initialJobs);
   const [runs, setRuns] = useState(initialRuns);
   const [sourceHealth, setSourceHealth] = useState(initialSourceHealth);
-  const [query, setQuery] = useState("");
-  const [locationScope, setLocationScope] = useState<JobLocationScope>("remote-us");
-  const [includeUnknown, setIncludeUnknown] = useState(true);
+  const [activeSavedSearch, setActiveSavedSearch] = useState<SavedJobSearch | null>(
+    initialActiveSearch,
+  );
+  const [query, setQuery] = useState(initialActiveSearch?.criteria.query ?? "");
+  const [locationScope, setLocationScope] = useState<JobLocationScope>(
+    initialActiveSearch?.criteria.locationScope ?? "remote-us",
+  );
+  const [includeUnknown, setIncludeUnknown] = useState(
+    initialActiveSearch?.criteria.unknownLocationPolicy !== "exclude",
+  );
+  const [showSkipped, setShowSkipped] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<PublicJobSearchResult | null>(null);
@@ -200,15 +265,30 @@ export function JobSearchClient({
     }),
     [includeUnknown, locationScope, query],
   );
-  const visibleJobs = useMemo(
-    () =>
-      jobs.filter(
+  const assessedJobs = useMemo(() => {
+    const filtered = jobs
+      .filter(
         (entry) =>
           matchesQuery(entry.posting, criteria.query) &&
           matchesLocationCriteria(entry.posting, criteria),
-      ),
-    [criteria, jobs],
-  );
+      )
+      .map((entry) => ({
+        entry,
+        assessment: activeSavedSearch
+          ? assessJobMatch(entry.posting, activeSavedSearch.criteria.query, activeSavedSearch.match)
+          : undefined,
+      }));
+    if (!activeSavedSearch) return filtered;
+    return filtered.sort((left, right) => {
+      if (left.assessment!.verdict === "skip" && right.assessment!.verdict !== "skip") return 1;
+      if (left.assessment!.verdict !== "skip" && right.assessment!.verdict === "skip") return -1;
+      return right.assessment!.score - left.assessment!.score;
+    });
+  }, [activeSavedSearch, criteria, jobs]);
+  const skippedCount = assessedJobs.filter((item) => item.assessment?.verdict === "skip").length;
+  const visibleJobs = showSkipped
+    ? assessedJobs
+    : assessedJobs.filter((item) => item.assessment?.verdict !== "skip");
   const lastRun = runs[0];
   const freehireHealth = sourceHealth.find((source) => source.provider === "freehire");
 
@@ -235,6 +315,15 @@ export function JobSearchClient({
     }
   }
 
+  function activateSavedSearch(search: SavedJobSearch | null) {
+    setActiveSavedSearch(search);
+    setShowSkipped(false);
+    if (!search) return;
+    setQuery(search.criteria.query);
+    setLocationScope(search.criteria.locationScope ?? "any");
+    setIncludeUnknown(search.criteria.unknownLocationPolicy !== "exclude");
+  }
+
   return (
     <div className="space-y-8">
       <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -253,7 +342,10 @@ export function JobSearchClient({
                 <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                 <input
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    setActiveSavedSearch(null);
+                  }}
                   placeholder="ML engineer, LLM, Python…"
                   className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground"
                 />
@@ -265,7 +357,10 @@ export function JobSearchClient({
               </span>
               <select
                 value={locationScope}
-                onChange={(event) => setLocationScope(event.target.value as JobLocationScope)}
+                onChange={(event) => {
+                  setLocationScope(event.target.value as JobLocationScope);
+                  setActiveSavedSearch(null);
+                }}
                 className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body text-foreground outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="remote-us">Remote · United States</option>
@@ -287,7 +382,10 @@ export function JobSearchClient({
               <input
                 type="checkbox"
                 checked={includeUnknown}
-                onChange={(event) => setIncludeUnknown(event.target.checked)}
+                onChange={(event) => {
+                  setIncludeUnknown(event.target.checked);
+                  setActiveSavedSearch(null);
+                }}
                 className="size-4 rounded border-border"
               />
               Include jobs whose location is unclear
@@ -300,6 +398,8 @@ export function JobSearchClient({
                 setIncludeUnknown(true);
                 setError(null);
                 setOutcome(null);
+                setActiveSavedSearch(null);
+                setShowSkipped(false);
               }}
               className="text-caption font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
@@ -343,16 +443,36 @@ export function JobSearchClient({
       <SavedSearchManager
         initialSavedSearches={initialSavedSearches}
         onRunComplete={refreshAfterSearch}
+        activeSearchId={activeSavedSearch?.id ?? null}
+        onActivate={activateSavedSearch}
       />
 
       <section aria-labelledby="job-results-heading">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 id="job-results-heading" className="text-body font-semibold text-muted-foreground">
-            Job catalogue
-          </h2>
-          <span className="text-caption text-muted-foreground">
-            {visibleJobs.length} matching · {jobs.length} saved
-          </span>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="job-results-heading" className="text-body font-semibold text-muted-foreground">
+              {activeSavedSearch ? `${activeSavedSearch.name} shortlist` : "Job catalogue"}
+            </h2>
+            {activeSavedSearch && (
+              <p className="mt-0.5 text-caption text-muted-foreground">
+                Hard blockers first, then ranked by visible role and skill evidence. No AI call.
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            {activeSavedSearch && skippedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowSkipped((current) => !current)}
+                className="text-caption font-semibold text-primary hover:underline"
+              >
+                {showSkipped ? "Hide excluded" : `Show ${skippedCount} excluded`}
+              </button>
+            )}
+            <span className="text-caption text-muted-foreground">
+              {visibleJobs.length} shown · {jobs.length} saved
+            </span>
+          </div>
         </div>
 
         {visibleJobs.length === 0 ? (
@@ -366,8 +486,8 @@ export function JobSearchClient({
           />
         ) : (
           <div className="space-y-3">
-            {visibleJobs.map((entry) => (
-              <JobCard key={entry.posting.id} entry={entry} />
+            {visibleJobs.map(({ entry, assessment }) => (
+              <JobCard key={entry.posting.id} entry={entry} assessment={assessment} />
             ))}
           </div>
         )}

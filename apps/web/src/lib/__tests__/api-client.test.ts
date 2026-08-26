@@ -145,6 +145,7 @@ describe("api client", () => {
       name: "Remote AI roles",
       criteria: { query: "ML engineer" },
       sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
+      match: { prioritySkills: [], excludedKeywords: [], excludedCompanies: [] },
     };
 
     await api.jobs.savedSearches.create(definition);

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { SavedJobSearch } from "@offeros/job-search";
 import type {
   JobCatalogueEntry,
   JobSearchRunSummary,
@@ -96,13 +97,16 @@ function health(overrides: Partial<JobSourceHealthSummary> = {}): JobSourceHealt
   };
 }
 
-function renderSearch(initialJobs: JobCatalogueEntry[] = []) {
+function renderSearch(
+  initialJobs: JobCatalogueEntry[] = [],
+  initialSavedSearches: SavedJobSearch[] = [],
+) {
   return render(
     <JobSearchClient
       initialJobs={initialJobs}
       initialRuns={[]}
       initialSourceHealth={[]}
-      initialSavedSearches={[]}
+      initialSavedSearches={initialSavedSearches}
     />,
   );
 }
@@ -236,5 +240,58 @@ describe("JobSearchClient", () => {
     expect(alert.textContent).toContain("Public search could not complete");
     expect(alert.textContent).toContain("freehire is temporarily unavailable");
     expect(screen.getByText("No jobs saved yet")).toBeTruthy();
+  });
+
+  it("sorts a saved-search shortlist and hides only explicit blockers", () => {
+    const savedSearch: SavedJobSearch = {
+      id: "saved-1",
+      name: "Platform fit",
+      criteria: {
+        query: "platform engineer",
+        locationScope: "remote-us",
+        unknownLocationPolicy: "include",
+        maxResults: 100,
+      },
+      sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
+      match: {
+        prioritySkills: ["TypeScript"],
+        excludedKeywords: ["contract"],
+        excludedCompanies: [],
+        maximumSeniority: "senior",
+      },
+      createdAt: 10,
+      updatedAt: 10,
+    };
+    renderSearch(
+      [
+        entry("strong", {
+          title: "Senior Platform Engineer",
+          liveness: "open",
+          description: "Build platform services with TypeScript.",
+        }),
+        entry("possible", {
+          title: "Platform Engineer",
+          liveness: "open",
+          description: "Build platform services with Python.",
+        }),
+        entry("excluded", {
+          title: "Staff Platform Engineer",
+          liveness: "open",
+          description: "Six-month contract role using TypeScript.",
+        }),
+      ],
+      [savedSearch],
+    );
+
+    expect(screen.getByText("Platform fit shortlist")).toBeTruthy();
+    expect(screen.getByText("Strong evidence")).toBeTruthy();
+    expect(screen.getByText("Possible match")).toBeTruthy();
+    expect(screen.queryByText("Staff Platform Engineer")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 excluded" }));
+
+    expect(screen.getByText("Staff Platform Engineer")).toBeTruthy();
+    expect(screen.getByText("Excluded keyword matched: contract.")).toBeTruthy();
+    expect(screen.getByText(/exceeds the senior ceiling/)).toBeTruthy();
   });
 });

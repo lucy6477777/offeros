@@ -36,6 +36,12 @@ function saved(overrides: Partial<SavedJobSearch> = {}): SavedJobSearch {
       lever: [],
       ashby: [],
     },
+    match: {
+      prioritySkills: ["TypeScript", "PostgreSQL"],
+      excludedKeywords: ["contract"],
+      excludedCompanies: [],
+      maximumSeniority: "senior",
+    },
     createdAt: 10,
     updatedAt: 10,
     ...overrides,
@@ -46,7 +52,15 @@ describe("SavedSearchManager", () => {
   it("creates a repeatable search and ATS watchlist without exposing JSON", async () => {
     const created = saved();
     mocks.create.mockResolvedValue(created);
-    render(<SavedSearchManager initialSavedSearches={[]} onRunComplete={vi.fn()} />);
+    const onActivate = vi.fn();
+    render(
+      <SavedSearchManager
+        initialSavedSearches={[]}
+        onRunComplete={vi.fn()}
+        activeSearchId={null}
+        onActivate={onActivate}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "New saved search" }));
     fireEvent.change(screen.getByLabelText("Search name"), {
@@ -54,6 +68,15 @@ describe("SavedSearchManager", () => {
     });
     fireEvent.change(screen.getByLabelText("Saved keywords"), {
       target: { value: "platform engineer" },
+    });
+    fireEvent.change(screen.getByLabelText("Priority skills"), {
+      target: { value: "TypeScript, PostgreSQL" },
+    });
+    fireEvent.change(screen.getByLabelText("Excluded keywords"), {
+      target: { value: "contract" },
+    });
+    fireEvent.change(screen.getByLabelText("Maximum title seniority"), {
+      target: { value: "senior" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add Greenhouse board" }));
     fireEvent.change(screen.getByLabelText("Greenhouse company 1"), {
@@ -79,15 +102,29 @@ describe("SavedSearchManager", () => {
           lever: [],
           ashby: [],
         },
+        match: {
+          prioritySkills: ["TypeScript", "PostgreSQL"],
+          excludedKeywords: ["contract"],
+          excludedCompanies: [],
+          maximumSeniority: "senior",
+        },
       }),
     );
+    expect(onActivate).toHaveBeenCalledWith(created);
     expect(await screen.findByText("Remote platform roles")).toBeTruthy();
     expect(screen.getByText("Greenhouse · 1")).toBeTruthy();
     expect(screen.queryByText(/\{"/)).toBeNull();
   });
 
   it("explains that at least one source must remain selected", () => {
-    render(<SavedSearchManager initialSavedSearches={[]} onRunComplete={vi.fn()} />);
+    render(
+      <SavedSearchManager
+        initialSavedSearches={[]}
+        onRunComplete={vi.fn()}
+        activeSearchId={null}
+        onActivate={vi.fn()}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "New saved search" }));
     fireEvent.change(screen.getByLabelText("Search name"), { target: { value: "Platform" } });
     fireEvent.change(screen.getByLabelText("Saved keywords"), {
@@ -120,12 +157,21 @@ describe("SavedSearchManager", () => {
     };
     mocks.run.mockResolvedValue(result);
     const onRunComplete = vi.fn().mockResolvedValue(undefined);
-    render(<SavedSearchManager initialSavedSearches={[saved()]} onRunComplete={onRunComplete} />);
+    const onActivate = vi.fn();
+    render(
+      <SavedSearchManager
+        initialSavedSearches={[saved()]}
+        onRunComplete={onRunComplete}
+        activeSearchId={null}
+        onActivate={onActivate}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Run now" }));
 
     await waitFor(() => expect(mocks.run).toHaveBeenCalledWith("saved-1"));
     expect(onRunComplete).toHaveBeenCalledWith(result);
+    expect(onActivate).toHaveBeenCalledWith(completed);
     expect(await screen.findByText(/Last run: Jan 1, 1970/)).toBeTruthy();
   });
 
@@ -133,7 +179,14 @@ describe("SavedSearchManager", () => {
     const updated = saved({ name: "Senior platform roles", updatedAt: 20 });
     mocks.update.mockResolvedValue(updated);
     mocks.remove.mockResolvedValue({ id: "saved-1" });
-    render(<SavedSearchManager initialSavedSearches={[saved()]} onRunComplete={vi.fn()} />);
+    render(
+      <SavedSearchManager
+        initialSavedSearches={[saved()]}
+        onRunComplete={vi.fn()}
+        activeSearchId="saved-1"
+        onActivate={vi.fn()}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Search name"), {
@@ -147,5 +200,24 @@ describe("SavedSearchManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete Senior platform roles" }));
     await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith("saved-1"));
     expect(screen.getByText(/No saved searches yet/)).toBeTruthy();
+  });
+
+  it("activates a saved search for deterministic shortlist viewing", () => {
+    const onActivate = vi.fn();
+    const search = saved();
+    render(
+      <SavedSearchManager
+        initialSavedSearches={[search]}
+        onRunComplete={vi.fn()}
+        activeSearchId={null}
+        onActivate={onActivate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View shortlist" }));
+
+    expect(onActivate).toHaveBeenCalledWith(search);
+    expect(screen.getByText("2 priority skills")).toBeTruthy();
+    expect(screen.getByText("1 exclusions")).toBeTruthy();
   });
 });

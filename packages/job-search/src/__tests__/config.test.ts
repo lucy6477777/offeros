@@ -23,6 +23,32 @@ describe("job search configuration", () => {
 
     expect(parsed.criteria.query).toBe("platform engineer");
     expect(parsed.sources).toMatchObject({ freehire: false, ashby: [] });
+    expect(parsed.match).toEqual({
+      prioritySkills: [],
+      excludedKeywords: [],
+      excludedCompanies: [],
+    });
+  });
+
+  it("normalizes deterministic shortlist preferences", () => {
+    const parsed = savedJobSearchDefinitionSchema.parse({
+      name: "Platform shortlist",
+      criteria: { query: "platform engineer" },
+      sources: { freehire: true },
+      match: {
+        prioritySkills: [" TypeScript ", "PostgreSQL"],
+        excludedKeywords: ["contract"],
+        excludedCompanies: ["Acme"],
+        maximumSeniority: "senior",
+      },
+    });
+
+    expect(parsed.match).toEqual({
+      prioritySkills: ["TypeScript", "PostgreSQL"],
+      excludedKeywords: ["contract"],
+      excludedCompanies: ["Acme"],
+      maximumSeniority: "senior",
+    });
   });
 
   it("rejects searches without keywords or a configured source", () => {
