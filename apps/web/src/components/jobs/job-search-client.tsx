@@ -70,6 +70,23 @@ function verdictLabel(verdict: JobMatchAssessment["verdict"]): string {
   return "Excluded";
 }
 
+function sponsorshipLabel(
+  state: JobMatchAssessment["eligibility"]["sponsorship"]["state"],
+): string {
+  if (state === "available") return "available";
+  if (state === "unavailable") return "not offered";
+  if (state === "ambiguous") return "needs review";
+  return "not mentioned";
+}
+
+function workAuthorizationLabel(
+  state: JobMatchAssessment["eligibility"]["usWorkAuthorization"]["state"],
+): string {
+  if (state === "required") return "current authorization required";
+  if (state === "restricted") return "specific status restriction";
+  return "not mentioned";
+}
+
 function JobCard({
   entry,
   assessment,
@@ -79,6 +96,18 @@ function JobCard({
 }) {
   const { posting } = entry;
   const providers = [...new Set(posting.sources.map((source) => source.provider))];
+  const eligibilityEvidence = assessment
+    ? [
+        ...assessment.eligibility.sponsorship.evidence.map((detail) => ({
+          label: "Sponsorship",
+          detail,
+        })),
+        ...assessment.eligibility.usWorkAuthorization.evidence.map((detail) => ({
+          label: "US work authorization",
+          detail,
+        })),
+      ]
+    : [];
 
   return (
     <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -143,6 +172,21 @@ function JobCard({
               {assessment.score}/100 evidence score · deterministic
             </span>
           </div>
+          <p className="mt-2 text-muted-foreground">
+            Sponsorship: {sponsorshipLabel(assessment.eligibility.sponsorship.state)} · US work
+            authorization:{" "}
+            {workAuthorizationLabel(assessment.eligibility.usWorkAuthorization.state)}
+          </p>
+          {eligibilityEvidence.length > 0 && (
+            <ul className="mt-2 space-y-1 text-muted-foreground">
+              {eligibilityEvidence.map((item) => (
+                <li key={`${item.label}:${item.detail}`}>
+                  <span className="font-medium text-foreground">{item.label} evidence:</span> “
+                  {item.detail}”
+                </li>
+              ))}
+            </ul>
+          )}
           {assessment.blockers.length > 0 && (
             <ul className="mt-2 space-y-1 text-destructive">
               {assessment.blockers.map((reason) => (

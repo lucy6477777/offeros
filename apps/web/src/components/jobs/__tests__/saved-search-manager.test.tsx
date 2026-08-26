@@ -41,6 +41,7 @@ function saved(overrides: Partial<SavedJobSearch> = {}): SavedJobSearch {
       excludedKeywords: ["contract"],
       excludedCompanies: [],
       maximumSeniority: "senior",
+      eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "required" },
     },
     createdAt: 10,
     updatedAt: 10,
@@ -78,6 +79,12 @@ describe("SavedSearchManager", () => {
     fireEvent.change(screen.getByLabelText("Maximum title seniority"), {
       target: { value: "senior" },
     });
+    fireEvent.change(screen.getByLabelText("Current US work authorization"), {
+      target: { value: "authorized" },
+    });
+    fireEvent.change(screen.getByLabelText("Employer sponsorship need"), {
+      target: { value: "required" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Add Greenhouse board" }));
     fireEvent.change(screen.getByLabelText("Greenhouse company 1"), {
       target: { value: "Acme" },
@@ -107,12 +114,14 @@ describe("SavedSearchManager", () => {
           excludedKeywords: ["contract"],
           excludedCompanies: [],
           maximumSeniority: "senior",
+          eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "required" },
         },
       }),
     );
     expect(onActivate).toHaveBeenCalledWith(created);
     expect(await screen.findByText("Remote platform roles")).toBeTruthy();
     expect(screen.getByText("Greenhouse · 1")).toBeTruthy();
+    expect(screen.getByText("Needs sponsorship")).toBeTruthy();
     expect(screen.queryByText(/\{"/)).toBeNull();
   });
 

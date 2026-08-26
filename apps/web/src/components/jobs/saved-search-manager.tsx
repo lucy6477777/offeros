@@ -8,6 +8,8 @@ import type {
   JobSeniority,
   SavedJobSearch,
   SavedJobSearchDefinition,
+  UsSponsorshipNeed,
+  UsWorkAuthorizationStatus,
 } from "@offeros/job-search";
 import { api, type SavedJobSearchRunResult } from "@/lib/api-client";
 
@@ -34,6 +36,7 @@ const EMPTY_DEFINITION: SavedJobSearchDefinition = {
     prioritySkills: [],
     excludedKeywords: [],
     excludedCompanies: [],
+    eligibility: { usWorkAuthorization: "unknown", sponsorshipNeed: "unknown" },
   },
 };
 
@@ -46,6 +49,7 @@ function cloneDefinition(search?: SavedJobSearch): SavedJobSearchDefinition {
       prioritySkills: [...search.match.prioritySkills],
       excludedKeywords: [...search.match.excludedKeywords],
       excludedCompanies: [...search.match.excludedCompanies],
+      eligibility: { ...search.match.eligibility },
       ...(search.match.maximumSeniority ? { maximumSeniority: search.match.maximumSeniority } : {}),
     },
     sources: {
@@ -74,6 +78,16 @@ function matchSummary(search: SavedJobSearch): string[] {
   if (exclusions > 0) labels.push(`${exclusions} exclusions`);
   if (search.match.maximumSeniority) {
     labels.push(`Up to ${search.match.maximumSeniority}`);
+  }
+  if (search.match.eligibility.usWorkAuthorization === "authorized") {
+    labels.push("US work authorized");
+  } else if (search.match.eligibility.usWorkAuthorization === "not-authorized") {
+    labels.push("US authorization needed");
+  }
+  if (search.match.eligibility.sponsorshipNeed === "required") {
+    labels.push("Needs sponsorship");
+  } else if (search.match.eligibility.sponsorshipNeed === "not-needed") {
+    labels.push("No sponsorship needed");
   }
   return labels;
 }
@@ -354,6 +368,56 @@ export function SavedSearchManager({
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
+                  Current US work authorization
+                </span>
+                <select
+                  value={draft.match.eligibility.usWorkAuthorization}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      match: {
+                        ...draft.match,
+                        eligibility: {
+                          ...draft.match.eligibility,
+                          usWorkAuthorization: event.target.value as UsWorkAuthorizationStatus,
+                        },
+                      },
+                    })
+                  }
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body text-foreground outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="unknown">Not set — always review explicit requirements</option>
+                  <option value="authorized">Currently authorized to work in the US</option>
+                  <option value="not-authorized">Not currently authorized to work in the US</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
+                  Employer sponsorship need
+                </span>
+                <select
+                  value={draft.match.eligibility.sponsorshipNeed}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      match: {
+                        ...draft.match,
+                        eligibility: {
+                          ...draft.match.eligibility,
+                          sponsorshipNeed: event.target.value as UsSponsorshipNeed,
+                        },
+                      },
+                    })
+                  }
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-body text-foreground outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="unknown">Not set — never infer</option>
+                  <option value="not-needed">I do not need sponsorship</option>
+                  <option value="required">I need sponsorship now or in the future</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-caption font-medium text-muted-foreground">
                   Excluded keywords
                 </span>
                 <input
@@ -385,6 +449,10 @@ export function SavedSearchManager({
                 />
               </label>
             </div>
+            <p className="mt-3 text-caption text-muted-foreground">
+              These answers only screen saved jobs. They never answer application forms or infer
+              your immigration status.
+            </p>
           </fieldset>
 
           <fieldset className="mt-5 border-t border-border pt-4">

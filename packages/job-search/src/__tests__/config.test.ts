@@ -27,6 +27,7 @@ describe("job search configuration", () => {
       prioritySkills: [],
       excludedKeywords: [],
       excludedCompanies: [],
+      eligibility: { usWorkAuthorization: "unknown", sponsorshipNeed: "unknown" },
     });
   });
 
@@ -40,6 +41,10 @@ describe("job search configuration", () => {
         excludedKeywords: ["contract"],
         excludedCompanies: ["Acme"],
         maximumSeniority: "senior",
+        eligibility: {
+          usWorkAuthorization: "authorized",
+          sponsorshipNeed: "required",
+        },
       },
     });
 
@@ -48,6 +53,7 @@ describe("job search configuration", () => {
       excludedKeywords: ["contract"],
       excludedCompanies: ["Acme"],
       maximumSeniority: "senior",
+      eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "required" },
     });
   });
 

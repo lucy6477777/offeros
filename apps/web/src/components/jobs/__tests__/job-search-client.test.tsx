@@ -258,6 +258,7 @@ describe("JobSearchClient", () => {
         excludedKeywords: ["contract"],
         excludedCompanies: [],
         maximumSeniority: "senior",
+        eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "not-needed" },
       },
       createdAt: 10,
       updatedAt: 10,
@@ -293,5 +294,67 @@ describe("JobSearchClient", () => {
     expect(screen.getByText("Staff Platform Engineer")).toBeTruthy();
     expect(screen.getByText("Excluded keyword matched: contract.")).toBeTruthy();
     expect(screen.getByText(/exceeds the senior ceiling/)).toBeTruthy();
+  });
+
+  it("excludes only explicit sponsorship conflicts and quotes the JD evidence", () => {
+    const savedSearch: SavedJobSearch = {
+      id: "saved-eligibility",
+      name: "Sponsored platform roles",
+      criteria: {
+        query: "platform engineer",
+        locationScope: "remote-us",
+        unknownLocationPolicy: "include",
+        maxResults: 100,
+      },
+      sources: { freehire: true, greenhouse: [], lever: [], ashby: [] },
+      match: {
+        prioritySkills: ["TypeScript"],
+        excludedKeywords: [],
+        excludedCompanies: [],
+        eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "required" },
+      },
+      createdAt: 10,
+      updatedAt: 10,
+    };
+    renderSearch(
+      [
+        entry("silent", {
+          title: "Platform Engineer",
+          liveness: "open",
+          description: "Build platform services with TypeScript.",
+        }),
+        entry("sponsored", {
+          title: "Senior Platform Engineer",
+          liveness: "open",
+          description: "We provide H-1B visa sponsorship for qualified candidates.",
+        }),
+        entry("blocked", {
+          title: "Platform Reliability Engineer",
+          liveness: "open",
+          description: "We do not provide visa sponsorship now or in the future.",
+        }),
+      ],
+      [savedSearch],
+    );
+
+    expect(screen.getByText("Platform Engineer")).toBeTruthy();
+    expect(screen.getByText("Senior Platform Engineer")).toBeTruthy();
+    expect(screen.queryByText("Platform Reliability Engineer")).toBeNull();
+    expect(screen.getByText(/Sponsorship: not mentioned/)).toBeTruthy();
+    expect(screen.getByText("Sponsorship evidence:").closest("li")?.textContent).toContain(
+      "We provide H-1B visa sponsorship for qualified candidates.",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 excluded" }));
+
+    expect(screen.getByText("Platform Reliability Engineer")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Sponsorship conflict: you need sponsorship, and the posting explicitly says it is unavailable.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText("Sponsorship evidence:").at(-1)?.closest("li")?.textContent,
+    ).toContain("We do not provide visa sponsorship now or in the future.");
   });
 });

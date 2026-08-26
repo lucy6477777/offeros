@@ -88,16 +88,21 @@ network response as local state.
 Saved Searches persist the keywords, US/Remote guard, and company Greenhouse,
 Lever, and Ashby boards as one repeatable watchlist. They also own deterministic
 shortlist rules: priority skills, excluded keywords and companies, and a title
-seniority ceiling. `assessJobMatch` applies explicit blockers first, then ranks
-the surviving jobs by visible role and skill evidence. Missing descriptions,
-status, or title seniority remain review reasons; they never become silent
-rejections. The score is derived on read and is not persisted as if it were a
-new fact.
+seniority ceiling. A saved search can also hold explicit US work-authorization
+and employer-sponsorship answers. `extractJobEligibilityFacts` reads only the
+posting text and keeps sponsorship as available, unavailable, ambiguous, or
+not mentioned. `assessJobMatch` applies explicit blockers first, then ranks the
+surviving jobs by visible role and skill evidence. It rejects an eligibility
+case only when the user's saved answer and the posting's quoted statement
+directly conflict; silence, conditional wording, and citizenship/residency
+restrictions remain reviewable. These settings screen jobs only and are never
+used to answer an application form. The score is derived on read and is not
+persisted as if it were a new fact.
 
 Current boundary: the hosted freehire endpoint is fixed in the Web route to
 avoid arbitrary remote URL fetches; library callers may explicitly configure an
-HTTPS self-hosted instance. Scheduled scans and structured work-authorization /
-sponsorship matching remain later slices.
+HTTPS self-hosted instance. Scheduled scans, Profile-skill reuse, experience and
+salary rules, and AI rubric calibration remain later slices.
 
 To check current public payloads without writing anywhere:
 

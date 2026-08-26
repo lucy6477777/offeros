@@ -193,6 +193,7 @@ describe("saved job search routes", () => {
         excludedKeywords: ["contract"],
         excludedCompanies: ["Blocked Labs"],
         maximumSeniority: "senior",
+        eligibility: { usWorkAuthorization: "authorized", sponsorshipNeed: "required" },
       },
     };
     const createdResponse = await savedSearchesRoute.POST(
