@@ -26,9 +26,15 @@ provider. `result.stages` records the survivor count after normalization,
 criteria matching, deduplication, and the final limit, so jobs never disappear
 without an observable reason.
 
-Current boundary: results are returned in memory. SQLite persistence, saved
-searches, source health history, US/Remote hard filters, and the Web UI are the
-next Phase 2 slices.
+The Web app persists normalized results, source provenance, run diagnostics,
+survivor order, and rolling provider health in its existing local SQLite
+database. `POST /api/v1/jobs/search` executes configured Greenhouse/Lever
+providers, `GET /api/v1/jobs` queries canonical jobs without touching the
+network, and `GET /api/v1/jobs/search` returns recent runs and provider health.
+
+Current boundary: provider configuration is supplied per search request. Saved
+searches, scheduled scans, US/Remote hard filters, Ashby/freehire, and the Web UI
+remain later Phase 2 slices.
 
 To check current public payloads without writing anywhere:
 

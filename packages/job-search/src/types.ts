@@ -3,6 +3,13 @@ import { z } from "zod";
 export const JOB_SOURCE_KINDS = ["official-ats", "aggregator", "browser", "manual"] as const;
 export const JOB_WORKPLACE_TYPES = ["remote", "hybrid", "on-site", "unknown"] as const;
 export const JOB_LIVENESS = ["open", "closed", "unknown"] as const;
+export const PROVIDER_RUN_STATUSES = ["success", "partial", "failed"] as const;
+export const SEARCH_STAGE_NAMES = [
+  "provider-normalization",
+  "criteria",
+  "deduplication",
+  "limit",
+] as const;
 
 export const jobSourceRecordSchema = z.object({
   provider: z.string().min(1),
@@ -52,14 +59,16 @@ export type JobSourceRecord = z.infer<typeof jobSourceRecordSchema>;
 export type JobPosting = z.infer<typeof jobPostingSchema>;
 export type JobSearchCriteria = z.infer<typeof jobSearchCriteriaSchema>;
 
-export interface ProviderIssue {
-  provider: string;
+export const providerIssueSchema = z.object({
+  provider: z.string().min(1),
   /** Board/site name, when one tenant failed but the provider stayed alive. */
-  scope?: string;
-  code: "network" | "http" | "invalid-json" | "response-too-large" | "invalid-payload";
-  message: string;
-  retryable: boolean;
-}
+  scope: z.string().min(1).optional(),
+  code: z.enum(["network", "http", "invalid-json", "response-too-large", "invalid-payload"]),
+  message: z.string().min(1),
+  retryable: z.boolean(),
+});
+
+export type ProviderIssue = z.infer<typeof providerIssueSchema>;
 
 export interface ProviderSearchResult {
   postings: JobPosting[];
@@ -82,27 +91,32 @@ export interface JobSearchProvider {
   search(criteria: JobSearchCriteria, context?: JobSearchContext): Promise<ProviderSearchResult>;
 }
 
-export interface ProviderRun {
-  provider: string;
-  status: "success" | "partial" | "failed";
-  received: number;
-  accepted: number;
-  rejected: number;
-  durationMs: number;
-  issues: ProviderIssue[];
-}
+export const providerRunSchema = z.object({
+  provider: z.string().min(1),
+  status: z.enum(PROVIDER_RUN_STATUSES),
+  received: z.number().int().nonnegative(),
+  accepted: z.number().int().nonnegative(),
+  rejected: z.number().int().nonnegative(),
+  durationMs: z.number().int().nonnegative(),
+  issues: z.array(providerIssueSchema),
+});
 
-export interface SearchStageCount {
-  stage: "provider-normalization" | "criteria" | "deduplication" | "limit";
-  input: number;
-  output: number;
-  removed: number;
-}
+export const searchStageCountSchema = z.object({
+  stage: z.enum(SEARCH_STAGE_NAMES),
+  input: z.number().int().nonnegative(),
+  output: z.number().int().nonnegative(),
+  removed: z.number().int().nonnegative(),
+});
 
-export interface JobSearchResult {
-  postings: JobPosting[];
-  providerRuns: ProviderRun[];
-  stages: SearchStageCount[];
-  startedAt: number;
-  finishedAt: number;
-}
+export const jobSearchResultSchema = z.object({
+  postings: z.array(jobPostingSchema),
+  providerRuns: z.array(providerRunSchema),
+  stages: z.array(searchStageCountSchema),
+  startedAt: z.number().int().nonnegative(),
+  finishedAt: z.number().int().nonnegative(),
+});
+
+export type ProviderRunStatus = (typeof PROVIDER_RUN_STATUSES)[number];
+export type ProviderRun = z.infer<typeof providerRunSchema>;
+export type SearchStageCount = z.infer<typeof searchStageCountSchema>;
+export type JobSearchResult = z.infer<typeof jobSearchResultSchema>;

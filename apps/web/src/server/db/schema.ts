@@ -11,6 +11,15 @@ import type {
   Template,
   FitAnalysis,
 } from "@offeros/core";
+import type {
+  JobPosting,
+  JobSearchCriteria,
+  JobSourceKind,
+  ProviderIssue,
+  ProviderRun,
+  ProviderRunStatus,
+  SearchStageCount,
+} from "@offeros/job-search";
 
 /** Singleton row (id = "me") holding the profile document. */
 export const profiles = sqliteTable("profiles", {
@@ -48,6 +57,70 @@ export const applications = sqliteTable("applications", {
   attachResume: text("attach_resume"),
   appliedAt: integer("applied_at"),
   createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** The canonical, deduplicated job record. `doc` keeps the provider-neutral
+ * contract intact; the indexed columns are the identities and timestamps the
+ * repository needs without scanning JSON. */
+export const jobPostings = sqliteTable("job_postings", {
+  id: text("id").primaryKey(),
+  normalizedApplyUrl: text("normalized_apply_url").notNull().unique(),
+  doc: text("doc", { mode: "json" }).$type<JobPosting>().notNull(),
+  firstSeenAt: integer("first_seen_at").notNull(),
+  lastSeenAt: integer("last_seen_at").notNull(),
+});
+
+/** Latest known record for one provider/tenant/external-id identity. The full
+ * posting snapshot also contains sources; this table makes provenance directly
+ * queryable and lets a later liveness scan update one source independently. */
+export const jobSources = sqliteTable("job_sources", {
+  id: text("id").primaryKey(),
+  jobPostingId: text("job_posting_id").notNull(),
+  provider: text("provider").notNull(),
+  kind: text("kind").$type<JobSourceKind>().notNull(),
+  externalId: text("external_id").notNull(),
+  tenant: text("tenant"),
+  sourceUrl: text("source_url").notNull(),
+  applyUrl: text("apply_url").notNull(),
+  fetchedAt: integer("fetched_at").notNull(),
+});
+
+export const searchRuns = sqliteTable("search_runs", {
+  id: text("id").primaryKey(),
+  criteria: text("criteria", { mode: "json" }).$type<JobSearchCriteria>().notNull(),
+  providerRuns: text("provider_runs", { mode: "json" }).$type<ProviderRun[]>().notNull(),
+  stages: text("stages", { mode: "json" }).$type<SearchStageCount[]>().notNull(),
+  status: text("status").$type<ProviderRunStatus>().notNull(),
+  resultCount: integer("result_count").notNull(),
+  startedAt: integer("started_at").notNull(),
+  finishedAt: integer("finished_at").notNull(),
+});
+
+/** Final survivors for one run. Stage-level rejected counts live on
+ * `search_runs`; these rows preserve which canonical postings survived and in
+ * what order. */
+export const searchRunItems = sqliteTable("search_run_items", {
+  id: text("id").primaryKey(),
+  runId: text("run_id").notNull(),
+  jobPostingId: text("job_posting_id").notNull(),
+  position: integer("position").notNull(),
+});
+
+/** One rolling health record per provider. Scope-level errors are retained in
+ * `issues`, so an unhealthy board remains observable even when its provider is
+ * only partially degraded. */
+export const sourceHealth = sqliteTable("source_health", {
+  provider: text("provider").primaryKey(),
+  status: text("status").$type<ProviderRunStatus>().notNull(),
+  received: integer("received").notNull(),
+  accepted: integer("accepted").notNull(),
+  rejected: integer("rejected").notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  issues: text("issues", { mode: "json" }).$type<ProviderIssue[]>().notNull(),
+  lastSuccessAt: integer("last_success_at"),
+  lastFailureAt: integer("last_failure_at"),
+  consecutiveFailures: integer("consecutive_failures").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -234,6 +307,11 @@ export const schema = {
   answers,
   resumes,
   applications,
+  jobPostings,
+  jobSources,
+  searchRuns,
+  searchRunItems,
+  sourceHealth,
   pipelineTasks,
   settings,
   jdAnalyses,

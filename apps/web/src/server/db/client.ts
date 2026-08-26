@@ -20,6 +20,25 @@ CREATE TABLE IF NOT EXISTS applications (
   id TEXT PRIMARY KEY, job_info TEXT NOT NULL, status TEXT NOT NULL,
   jd_text TEXT, notes TEXT, applied_at INTEGER,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS job_postings (
+  id TEXT PRIMARY KEY, normalized_apply_url TEXT NOT NULL UNIQUE,
+  doc TEXT NOT NULL, first_seen_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS job_sources (
+  id TEXT PRIMARY KEY, job_posting_id TEXT NOT NULL, provider TEXT NOT NULL,
+  kind TEXT NOT NULL, external_id TEXT NOT NULL, tenant TEXT,
+  source_url TEXT NOT NULL, apply_url TEXT NOT NULL, fetched_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS search_runs (
+  id TEXT PRIMARY KEY, criteria TEXT NOT NULL, provider_runs TEXT NOT NULL,
+  stages TEXT NOT NULL, status TEXT NOT NULL, result_count INTEGER NOT NULL,
+  started_at INTEGER NOT NULL, finished_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS search_run_items (
+  id TEXT PRIMARY KEY, run_id TEXT NOT NULL, job_posting_id TEXT NOT NULL,
+  position INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS source_health (
+  provider TEXT PRIMARY KEY, status TEXT NOT NULL, received INTEGER NOT NULL,
+  accepted INTEGER NOT NULL, rejected INTEGER NOT NULL, duration_ms INTEGER NOT NULL,
+  issues TEXT NOT NULL, last_success_at INTEGER, last_failure_at INTEGER,
+  consecutive_failures INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS agent_tasks (
   id TEXT PRIMARY KEY, application_id TEXT NOT NULL, status TEXT NOT NULL,
   step INTEGER NOT NULL DEFAULT 0, application_info TEXT, resume_id TEXT,
@@ -67,6 +86,9 @@ CREATE TABLE IF NOT EXISTS fill_incidents (
   question_keys TEXT NOT NULL, summary TEXT NOT NULL, status TEXT NOT NULL,
   at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
+CREATE INDEX IF NOT EXISTS idx_job_postings_last_seen ON job_postings(last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_job_sources_posting ON job_sources(job_posting_id);
+CREATE INDEX IF NOT EXISTS idx_search_run_items_run ON search_run_items(run_id, position);
 CREATE INDEX IF NOT EXISTS idx_agent_tasks_application ON agent_tasks(application_id);
 CREATE INDEX IF NOT EXISTS idx_jd_analyses_application ON jd_analyses(application_id);
 CREATE INDEX IF NOT EXISTS idx_fit_analyses_application ON fit_analyses(application_id);
