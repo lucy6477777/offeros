@@ -767,9 +767,15 @@ describe("startInstantFill", () => {
     const { taskId, applicationId } = seedTaskAtFillForm();
     const bundle = startInstantFill(db, {
       jobInfo: { ...JOB, applyLink: "https://apply.example.com/job/1" },
+      jdText: "The rendered current-page description.",
+      jdSource: "browser",
     });
     expect(bundle.taskId).toBe(taskId);
     expect(bundle.applicationId).toBe(applicationId);
+    expect(getApplication(db, applicationId)).toMatchObject({
+      jdText: "The rendered current-page description.",
+      jdSource: "browser",
+    });
   });
 
   it("refuses a mid-pipeline application instead of fighting the state gates", () => {

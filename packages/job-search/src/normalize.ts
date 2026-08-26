@@ -7,6 +7,7 @@ const TRACKING_PARAMS = new Set([
   "source",
   "fbclid",
   "gclid",
+  "igshid",
   "mc_cid",
   "mc_eid",
   "msclkid",

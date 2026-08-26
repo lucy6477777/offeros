@@ -25,6 +25,7 @@ import { jobPostings, jobSources, searchRunItems, searchRuns, sourceHealth } fro
 type JobPostingRow = typeof jobPostings.$inferSelect;
 type SearchRunRow = typeof searchRuns.$inferSelect;
 type SourceHealthRow = typeof sourceHealth.$inferSelect;
+type JobStore = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export interface StoredJobPosting {
   posting: JobPosting;
@@ -120,6 +121,89 @@ function statusFor(providerRuns: ProviderRun[]): ProviderRunStatus {
   return "partial";
 }
 
+/** Upsert one canonical posting and all of its source records. Shared by
+ * provider search runs and explicit manual/browser captures. */
+function upsertJobPosting(store: JobStore, incoming: JobPosting, seenAt: number): StoredJobPosting {
+  const normalizedApplyUrl = normalizePostingUrl(incoming.applyUrl);
+  const byUrl = store
+    .select()
+    .from(jobPostings)
+    .where(eq(jobPostings.normalizedApplyUrl, normalizedApplyUrl))
+    .get();
+  const byId = store.select().from(jobPostings).where(eq(jobPostings.id, incoming.id)).get();
+  if (byUrl && byId && byUrl.id !== byId.id) {
+    throw new Error(`job identity collision for ${incoming.id}`);
+  }
+  const existing = byUrl ?? byId;
+  const existingPosting = existing ? jobPostingSchema.parse(existing.doc) : undefined;
+  const deduplicated = existingPosting
+    ? deduplicatePostings([existingPosting, incoming]).postings[0]!
+    : incoming;
+  const posting = jobPostingSchema.parse({
+    ...deduplicated,
+    id: existing?.id ?? incoming.id,
+    sources: mergedSources(existingPosting?.sources ?? [], incoming.sources),
+  });
+  const row = {
+    id: posting.id,
+    normalizedApplyUrl: normalizePostingUrl(posting.applyUrl),
+    doc: posting,
+    firstSeenAt: existing?.firstSeenAt ?? seenAt,
+    lastSeenAt: seenAt,
+  };
+  store
+    .insert(jobPostings)
+    .values(row)
+    .onConflictDoUpdate({
+      target: jobPostings.id,
+      set: {
+        normalizedApplyUrl: row.normalizedApplyUrl,
+        doc: posting,
+        lastSeenAt: row.lastSeenAt,
+      },
+    })
+    .run();
+
+  for (const source of posting.sources) {
+    store
+      .insert(jobSources)
+      .values({
+        id: sourceId(source),
+        jobPostingId: posting.id,
+        provider: source.provider,
+        kind: source.kind,
+        externalId: source.externalId,
+        tenant: source.tenant ?? null,
+        sourceUrl: source.sourceUrl,
+        applyUrl: source.applyUrl,
+        fetchedAt: source.fetchedAt,
+      })
+      .onConflictDoUpdate({
+        target: jobSources.id,
+        set: {
+          jobPostingId: posting.id,
+          kind: source.kind,
+          sourceUrl: source.sourceUrl,
+          applyUrl: source.applyUrl,
+          fetchedAt: source.fetchedAt,
+        },
+      })
+      .run();
+  }
+  return toStoredJob(row);
+}
+
+/** Persist a user-triggered manual/browser capture without fabricating a
+ * SearchRun or changing provider health. */
+export function saveCapturedJobPosting(
+  db: Db,
+  input: { posting: unknown; seenAt?: number },
+): StoredJobPosting {
+  const posting = jobPostingSchema.parse(input.posting);
+  const seenAt = input.seenAt ?? Date.now();
+  return db.transaction((tx) => upsertJobPosting(tx, posting, seenAt));
+}
+
 /**
  * Persist one completed search as a single SQLite transaction.
  *
@@ -165,79 +249,16 @@ export function saveJobSearchResult(
 
     const stored: StoredJobPosting[] = [];
     for (const [position, incoming] of result.postings.entries()) {
-      const normalizedApplyUrl = normalizePostingUrl(incoming.applyUrl);
-      const byUrl = tx
-        .select()
-        .from(jobPostings)
-        .where(eq(jobPostings.normalizedApplyUrl, normalizedApplyUrl))
-        .get();
-      const byId = tx.select().from(jobPostings).where(eq(jobPostings.id, incoming.id)).get();
-      if (byUrl && byId && byUrl.id !== byId.id) {
-        throw new Error(`job identity collision for ${incoming.id}`);
-      }
-      const existing = byUrl ?? byId;
-      const existingPosting = existing ? jobPostingSchema.parse(existing.doc) : undefined;
-      const deduplicated = existingPosting
-        ? deduplicatePostings([existingPosting, incoming]).postings[0]!
-        : incoming;
-      const posting = jobPostingSchema.parse({
-        ...deduplicated,
-        id: existing?.id ?? incoming.id,
-        sources: mergedSources(existingPosting?.sources ?? [], incoming.sources),
-      });
-      const row = {
-        id: posting.id,
-        normalizedApplyUrl: normalizePostingUrl(posting.applyUrl),
-        doc: posting,
-        firstSeenAt: existing?.firstSeenAt ?? result.finishedAt,
-        lastSeenAt: result.finishedAt,
-      };
-      tx.insert(jobPostings)
-        .values(row)
-        .onConflictDoUpdate({
-          target: jobPostings.id,
-          set: {
-            normalizedApplyUrl: row.normalizedApplyUrl,
-            doc: posting,
-            lastSeenAt: row.lastSeenAt,
-          },
-        })
-        .run();
-
-      for (const source of posting.sources) {
-        tx.insert(jobSources)
-          .values({
-            id: sourceId(source),
-            jobPostingId: posting.id,
-            provider: source.provider,
-            kind: source.kind,
-            externalId: source.externalId,
-            tenant: source.tenant ?? null,
-            sourceUrl: source.sourceUrl,
-            applyUrl: source.applyUrl,
-            fetchedAt: source.fetchedAt,
-          })
-          .onConflictDoUpdate({
-            target: jobSources.id,
-            set: {
-              jobPostingId: posting.id,
-              kind: source.kind,
-              sourceUrl: source.sourceUrl,
-              applyUrl: source.applyUrl,
-              fetchedAt: source.fetchedAt,
-            },
-          })
-          .run();
-      }
+      const saved = upsertJobPosting(tx, incoming, result.finishedAt);
       tx.insert(searchRunItems)
         .values({
-          id: runItemId(runId, posting.id),
+          id: runItemId(runId, saved.posting.id),
           runId,
-          jobPostingId: posting.id,
+          jobPostingId: saved.posting.id,
           position,
         })
         .run();
-      stored.push(toStoredJob(row));
+      stored.push(saved);
     }
 
     for (const providerRun of result.providerRuns) {

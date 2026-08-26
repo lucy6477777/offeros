@@ -13,6 +13,7 @@ const answerRoute = await import("../agent/tasks/[id]/fill/answer/route");
 const resolveRoute = await import("../agent/tasks/[id]/fill/resolve/route");
 const pendingRoute = await import("../agent/fill/pending/route");
 const claimRoute = await import("../agent/fill/handoffs/[id]/claim/route");
+const instantRoute = await import("../agent/fill/instant/route");
 
 const { getDb } = await import("@/server/db/client");
 const { saveProfile } = await import("@/server/repositories/profile-repo");
@@ -20,6 +21,7 @@ const { createApplication, getApplication } =
   await import("@/server/repositories/application-repo");
 const { createPipelineTask, updatePipelineTask } =
   await import("@/server/repositories/pipeline-task-repo");
+const { listStoredJobs } = await import("@/server/repositories/job-search-repo");
 const { __setTestPipelineOverride } = await import("@/server/pipeline/route-context");
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -87,6 +89,33 @@ function report(over: Partial<FieldReport> & Pick<FieldReport, "fieldId">): Fiel
 }
 
 beforeEach(() => saveProfile(getDb(), PROFILE));
+
+describe("POST /agent/fill/instant", () => {
+  it("captures the rendered current job before starting the fill lane", async () => {
+    const url = "https://jobs.example.com/acme/instant-capture-1";
+    const response = await instantRoute.POST(
+      post({
+        jobInfo: {
+          jobId: "instant-1",
+          jobTitle: "Instant Platform Engineer",
+          companyName: "Acme",
+          jobLocation: "Remote, United States",
+          applyLink: url,
+        },
+        jdText: "Build reliable TypeScript systems from the current rendered page.",
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(getApplication(getDb(), body.result.applicationId)?.jdSource).toBe("browser");
+    const captured = listStoredJobs(getDb()).find((job) => job.posting.applyUrl === url);
+    expect(captured?.posting.sources[0]).toMatchObject({
+      provider: "browser-capture",
+      kind: "browser",
+    });
+  });
+});
 
 describe("POST /agent/tasks/[id]/fill/handoff", () => {
   it("opens a pending ticket for a task at the fill-form gate", async () => {

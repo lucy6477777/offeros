@@ -3,18 +3,20 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  createCapturedJobPosting,
   jobPostingSchema,
   type JobPosting,
   type JobSearchResult,
   type ProviderRun,
 } from "@offeros/job-search";
 import { createDb, type Db } from "../../db/client";
-import { jobSources, searchRunItems } from "../../db/schema";
+import { jobSources, searchRunItems, searchRuns } from "../../db/schema";
 import {
   getStoredSearchRun,
   listSourceHealth,
   listStoredJobs,
   listStoredSearchRuns,
+  saveCapturedJobPosting,
   saveJobSearchResult,
 } from "../job-search-repo";
 
@@ -111,6 +113,39 @@ function result(
 }
 
 describe("job-search repository", () => {
+  it("upserts manual and browser captures without fabricating a search run", () => {
+    const base = {
+      url: "https://jobs.example.com/acme/123?utm_source=test",
+      title: "Platform Engineer",
+      company: "Acme",
+      location: "Remote, United States",
+    };
+    saveCapturedJobPosting(db, {
+      posting: createCapturedJobPosting({ ...base, source: "manual", fetchedAt: 10 }),
+      seenAt: 10,
+    });
+    saveCapturedJobPosting(db, {
+      posting: createCapturedJobPosting({
+        ...base,
+        source: "browser",
+        description: "The complete rendered job description.",
+        fetchedAt: 20,
+      }),
+      seenAt: 20,
+    });
+
+    const jobs = listStoredJobs(db);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({ firstSeenAt: 10, lastSeenAt: 20 });
+    expect(jobs[0]!.posting.description).toBe("The complete rendered job description.");
+    expect(jobs[0]!.posting.sources.map((source) => source.provider).sort()).toEqual([
+      "browser-capture",
+      "manual-url",
+    ]);
+    expect(db.select().from(jobSources).all()).toHaveLength(2);
+    expect(db.select().from(searchRuns).all()).toEqual([]);
+  });
+
   it("atomically persists a run, supports local queries, and is idempotent by run and URL", () => {
     const first = posting(
       "greenhouse:acme:123",

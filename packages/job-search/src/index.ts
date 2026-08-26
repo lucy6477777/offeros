@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./normalize";
+export * from "./capture";
 export * from "./dedupe";
 export * from "./search";
 export * from "./providers/ashby";

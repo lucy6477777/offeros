@@ -16,6 +16,7 @@ vi.mock("node:dns/promises", () => ({
 const applicationsRoute = await import("../applications/route");
 const { getDb } = await import("@/server/db/client");
 const { listApplications } = await import("@/server/repositories/application-repo");
+const { listStoredJobs } = await import("@/server/repositories/job-search-repo");
 const { listEvents } = await import("@/server/repositories/application-event-repo");
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -71,6 +72,19 @@ describe("POST /api/v1/applications", () => {
     expect(body.result.application.jobInfo.jobTitle).toBe("Machine Learning Engineer");
     expect(body.result.application.jobInfo.companyName).toBe("Acme Corp");
     expect(body.result.application.jdText).toContain("We need Python.");
+    const captured = listStoredJobs(getDb()).find(
+      (stored) => stored.posting.applyUrl === "https://boards.greenhouse.io/acme/jobs/4321",
+    );
+    expect(captured?.posting).toMatchObject({
+      title: "Machine Learning Engineer",
+      company: "Acme Corp",
+      location: "Austin, TX",
+      liveness: "unknown",
+    });
+    expect(captured?.posting.sources[0]).toMatchObject({
+      provider: "manual-url",
+      kind: "manual",
+    });
     // The check runs on arrival, so the requirements card has something to say.
     expect(body.result.recon.verdict).toBe("open");
     const events = listEvents(getDb(), body.result.application.id);
@@ -87,6 +101,13 @@ describe("POST /api/v1/applications", () => {
     expect(body.result.application.jobInfo.applyLink).toBe(
       "https://careers.example.com/jobs/senior-widget-wrangler",
     );
+    expect(
+      listStoredJobs(getDb()).some(
+        (stored) =>
+          stored.posting.applyUrl === "https://careers.example.com/jobs/senior-widget-wrangler" &&
+          stored.posting.company === "careers.example.com",
+      ),
+    ).toBe(true);
   });
 
   it("returns the existing application, flagged, instead of a second copy", async () => {
@@ -98,6 +119,9 @@ describe("POST /api/v1/applications", () => {
     expect(second.result.duplicate).toBe(true);
     expect(second.result.application.id).toBe(first.result.application.id);
     expect(listApplications(getDb()).length).toBe(before);
+    expect(
+      listStoredJobs(getDb()).filter((stored) => stored.posting.applyUrl.endsWith("/jobs/9999")),
+    ).toHaveLength(1);
   });
 
   it("refuses what is not a trackable link", async () => {

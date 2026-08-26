@@ -140,7 +140,7 @@ export function createHandoffForTask(db: Db, taskId: string): FillHandoff {
  */
 export function startInstantFill(
   db: Db,
-  input: { jobInfo: JobInfo; jdText?: string },
+  input: { jobInfo: JobInfo; jdText?: string; jdSource?: string },
 ): FillTaskBundle {
   const applyLink = input.jobInfo.applyLink;
   if (!applyLink) throw new ServiceError("instant fill needs the page URL");
@@ -159,10 +159,17 @@ export function startInstantFill(
     } else {
       taskId = createFillFirstTask(db, existing.id);
     }
+    if ((existing.jdText ?? "").trim() === "" && input.jdText?.trim()) {
+      updateApplication(db, existing.id, {
+        jdText: input.jdText.trim(),
+        jdSource: input.jdSource ?? "browser",
+      });
+    }
   } else {
     const application = createApplication(db, {
       jobInfo: input.jobInfo,
       jdText: input.jdText,
+      jdSource: input.jdSource,
       attachResume: "original",
     });
     applicationId = application.id;

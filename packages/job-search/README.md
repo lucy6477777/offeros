@@ -51,6 +51,26 @@ still rechecks every normalized result locally. If freehire reports those
 parameters as ignored, the provider fails closed instead of returning a broad
 result set.
 
+User-triggered captures use the same canonical contract:
+
+```ts
+import { createCapturedJobPosting } from "@offeros/job-search";
+
+const posting = createCapturedJobPosting({
+  source: "browser",
+  url: "https://jobs.example.com/acme/123?utm_source=panel",
+  title: "Platform Engineer",
+  company: "Acme",
+  description: "The rendered job description…",
+});
+```
+
+The Web app upserts these through its job-search repository without creating a
+fake search run. Existing manual URL, extension “Add this job”, and instant-fill
+entrypoints all feed this path. Repeating a capture advances `lastSeenAt`; a
+manual URL and browser capture of the same posting merge into one job while
+retaining both provenance records.
+
 The Web app persists normalized results, source provenance, run diagnostics,
 survivor order, and rolling provider health in its existing local SQLite
 database. `POST /api/v1/jobs/search` executes configured Greenhouse, Lever,
@@ -61,8 +81,8 @@ runs and provider health.
 Current boundary: provider configuration is supplied per search request. The
 hosted freehire endpoint is fixed in the Web route to avoid arbitrary remote URL
 fetches; library callers may explicitly configure an HTTPS self-hosted instance.
-Saved searches, scheduled scans, and the Web search UI remain later Phase 2
-slices.
+Saved searches, scheduled scans, and the Web search-results UI remain later
+Phase 2 slices.
 
 To check current public payloads without writing anywhere:
 

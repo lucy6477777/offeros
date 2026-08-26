@@ -5,6 +5,7 @@ import {
   listApplicationsByJobUrl,
 } from "@/server/repositories/application-repo";
 import { describeJobUrl, reconApplication } from "@/server/services/recon-service";
+import { saveApplicationJobCapture } from "@/server/services/job-capture-service";
 import { handle, ok, badRequest } from "@/server/http/envelope";
 
 export const runtime = "nodejs";
@@ -54,17 +55,30 @@ export async function POST(request: Request) {
 
     const db = getDb();
     const existing = listApplicationsByJobUrl(db, url)[0];
-    if (existing) return ok({ application: existing, duplicate: true });
+    if (existing) {
+      saveApplicationJobCapture(db, {
+        source: "manual",
+        jobInfo: existing.jobInfo,
+        jdText: existing.jdText,
+      });
+      return ok({ application: existing, duplicate: true });
+    }
 
     const described = await describeJobUrl(url);
+    const jobInfo = {
+      jobId: randomUUID(),
+      jobTitle: described?.title || "Untitled role",
+      companyName: described?.company || parsed.hostname.replace(/^www\./, ""),
+      applyLink: url,
+      ...(described?.location ? { jobLocation: described.location } : {}),
+    };
+    saveApplicationJobCapture(db, {
+      source: "manual",
+      jobInfo,
+      ...(described?.jdText ? { jdText: described.jdText } : {}),
+    });
     const application = createApplication(db, {
-      jobInfo: {
-        jobId: randomUUID(),
-        jobTitle: described?.title || "Untitled role",
-        companyName: described?.company || parsed.hostname.replace(/^www\./, ""),
-        applyLink: url,
-        ...(described?.location ? { jobLocation: described.location } : {}),
-      },
+      jobInfo,
       ...(described?.jdText ? { jdText: described.jdText, jdSource: described.source } : {}),
     });
 

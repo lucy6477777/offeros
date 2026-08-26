@@ -11,6 +11,8 @@ const tasksRoute = await import("../agent/tasks/route");
 const taskRoute = await import("../agent/tasks/[id]/route");
 const tweakRoute = await import("../agent/tasks/[id]/tweak/route");
 const { getDb } = await import("@/server/db/client");
+const { getApplication } = await import("@/server/repositories/application-repo");
+const { listStoredJobs } = await import("@/server/repositories/job-search-repo");
 const { saveProfile } = await import("@/server/repositories/profile-repo");
 const { __setTestPipelineOverride } = await import("@/server/pipeline/route-context");
 
@@ -144,6 +146,37 @@ describe("/api/v1/agent/tasks", () => {
     });
     const created = await (await tasksRoute.POST(post({ applicationId: application.id }))).json();
     expect(created.result.applicationId).toBe(application.id);
+  });
+
+  it("stores an extension-created task in the canonical browser-capture catalogue", async () => {
+    const url = "https://jobs.example.com/acme/browser-capture-1";
+    const response = await tasksRoute.POST(
+      post({
+        jobInfo: {
+          jobId: "browser-1",
+          jobTitle: "Browser Platform Engineer",
+          companyName: "Acme",
+          jobLocation: "Remote, United States",
+          applyLink: url,
+        },
+        jdText: "Build the platform from the rendered browser description.",
+        source: "extension",
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(getApplication(getDb(), body.result.applicationId)?.jdSource).toBe("browser");
+    const stored = listStoredJobs(getDb()).find((job) => job.posting.applyUrl === url);
+    expect(stored?.posting).toMatchObject({
+      title: "Browser Platform Engineer",
+      company: "Acme",
+      workplace: "remote",
+    });
+    expect(stored?.posting.sources[0]).toMatchObject({
+      provider: "browser-capture",
+      kind: "browser",
+    });
   });
 
   it("404s tweak and GET for a missing task", async () => {
